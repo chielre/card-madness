@@ -1,0 +1,36 @@
+import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router'
+import Lobby from '@/pages/Lobby.vue'
+import Main from '@/pages/MainPage.vue'
+import Game from '@/pages/Game.vue'
+import ConnectionError from '@/pages/ConnectionError.vue'
+
+const routes: RouteRecordRaw[] = [
+    {
+        path: '/',
+        name: 'main',
+        component: Main,
+    },
+    {
+        path: '/lobby',
+        name: 'lobby',
+        component: Lobby,
+    },
+    {
+        path: '/game/:id',
+        name: 'game',
+        component: Game,
+    },
+    {
+        path: '/error',
+        name: 'error',
+        component: ConnectionError,
+    },
+
+]
+
+const router = createRouter({
+    history: createWebHistory(),
+    routes,
+})
+
+export default router

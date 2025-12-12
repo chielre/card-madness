@@ -1,0 +1,121 @@
+[
+  {
+    "id": "base",
+    "name": "Base Pack",
+    "nsfw": false,
+    "author": "CardMadness",
+    "extension": {
+      "base_pack": null,
+      "extension_subject": null
+    },
+    "weight": 1,
+    "description": "Gewoon leuke situaties over van alles en nog wat. De basis pack die we iedereen aanraden!",
+    "style": {
+      "logo": "base_pack.png",
+      "background": "bg_haha.png",
+      "partner_logo": null,
+      "gradient_from": "#9A27FF",
+      "gradient_to": "#BABA00",
+      "music": ""
+    }
+  },
+  {
+    "id": "madness",
+    "name": "Madness pack",
+    "author": "Chiel",
+    "nsfw": false,
+    "extension": {
+      "base_pack": null,
+      "extension_subject": null
+    },
+    "weight": 1,
+    "description": "Raar, bijzonder, echte madness. Precies hoe we je de game willen laten spelen. Met deze pack brengt Chiel je game naar een lager niveau!",
+    "style": {
+      "logo": "madness_pack.png",
+      "background": "bg_haha.png",
+      "partner_logo": null,
+      "gradient_from": "#FFFFFF",
+      "gradient_to": "#B4C164",
+      "music": ""
+    }
+  },
+  {
+    "id": "nsfw",
+    "name": "NSFW Pack",
+    "author": "CardMadness",
+    "nsfw": true,
+    "extension": {
+      "base_pack": null,
+      "extension_subject": null
+    },
+    "weight": 3,
+    "description": "Om een vleugje zout te geven aan je avond. Ongecensureerd en extreem persoonlijk. Verwacht rare blikken een goede landing schaamte en hele bijzondere situaties. ",
+    "style": {
+      "logo": "nsfw_pack.png",
+      "background": "bg_nsfw.png",
+      "partner_logo": null,
+      "gradient_from": "#000000",
+      "gradient_to": "#DD2C00",
+      "music": "game_nsfw.mp3"
+    }
+  },
+  {
+    "id": "offensive",
+    "name": "Offensive Pack",
+    "author": "CardMadness",
+    "nsfw": true,
+    "extension": {
+      "base_pack": null,
+      "extension_subject": null
+    },
+    "weight": 4,
+    "description": "Geef je game een agresieve wending. Met de offensive pack komen harde discussies op gang en komen relaties op het spel. We hebben ons niet ingehouden, niet iedereen kan er om lachen ;)",
+    "style": {
+      "logo": "offensive_pack.png",
+      "background": "bg_offensive.png",
+      "gradient_from": "#000000",
+      "gradient_to": "#2D2D2D",
+      "music": "game_weird.mp3"
+    }
+  },
+  {
+    "id": "cmd",
+    "name": "CMD Pack",
+    "author": "CardMadness",
+    "nsfw": false,
+    "extension": {
+      "base_pack": null,
+      "extension_subject": null
+    },
+    "weight": 2,
+    "description": "Ergens ver weg in een Nederlandse stad genaamd Groningen, bestaat de studie CMD. Deze card pack neemt je mee in de bizarre wereld van CMD!",
+    "style": {
+      "logo": "cmd_pack.png",
+      "background": "bg_cmd.png",
+      "partner_logo": "hanze.png",
+      "gradient_from": "#D27519",
+      "gradient_to": "#6C4F00",
+      "music": "game_cmd.mp3"
+    }
+  },
+  {
+    "id": "visto",
+    "name": "Visto Pack",
+    "author": "CardMadness, Vistolabs",
+    "nsfw": false,
+    "extension": {
+      "base_pack": null,
+      "extension_subject": null
+    },
+    "weight": 2,
+    "description": "Participatief onderzoek doen, of wat het ook moet zijn. In deze pack nemen we je mee in de wereld van Vistolabs",
+    "style": {
+      "logo": "visto_pack.png",
+      "background": "bg_visto.png",
+      "partner_logo": "visto.png",
+      "gradient_from": "#001029",
+      "gradient_to": "#1CB88E",
+      "music": "game_visto.mp3"
+    }
+  }
+]
