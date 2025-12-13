@@ -7,6 +7,7 @@ body {
     background: linear-gradient(20deg, #5c0672, #570191, #330191);
     margin: 0;
     overflow-x: hidden;
+    color:#000;
 }
 
 @layer utilities {

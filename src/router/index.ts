@@ -2,6 +2,7 @@ import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router'
 import Lobby from '@/pages/Lobby.vue'
 import Main from '@/pages/MainPage.vue'
 import Game from '@/pages/Game.vue'
+import Dev from '@/pages/Dev.vue'
 import ConnectionError from '@/pages/ConnectionError.vue'
 
 const routes: RouteRecordRaw[] = [
@@ -24,6 +25,11 @@ const routes: RouteRecordRaw[] = [
         path: '/error',
         name: 'error',
         component: ConnectionError,
+    },
+    {
+        path: '/dev',
+        name: 'dev',
+        component: Dev,
     },
 
 ]

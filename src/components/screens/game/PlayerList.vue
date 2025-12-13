@@ -3,6 +3,12 @@ import { computed, ref, watch } from 'vue'
 import { useLobbyStore } from '@/store/LobbyStore'
 import { useAudioStore } from '@/store/AudioStore'
 import { useConnectionStore } from '@/store/ConnectionStore'
+
+import Tabs from "@/components/Tabs.vue"
+import Tab from "@/components/Tab.vue"
+import ToggleSwitch from "@/components/ui/ToggleSwitch.vue"
+import BaseButton from "@/components/ui/BaseButton.vue"
+
 import packs from '@/assets/packs/packs.json'
 
 import { playCue } from '@/audio/cues'
@@ -125,8 +131,10 @@ const closePackInfo = () => {
             <div class="border-4 border-b-8 border-black bg-white text-xl text-black font-black px-3 rounded-full">{{ players.length }} players</div>
 
         </div>
-        <div class="flex gap-6">
-            <div class="mt-8 bg-white border-4 border-b-8 rounded-xl border-black p-4">
+        <div class="grid grid-cols-9 gap-6 mt-8">
+
+            <!-- player list-->
+            <div class=" bg-white border-4 border-b-8 rounded-xl border-black p-4 col-span-2">
                 <ul class="space-y-2">
                     <li v-for="player in (props.players?.length ? props.players : lobby.players)" :key="player.id" class="flex items-center gap-4 text-black text-2xl font-bold p-4 rounded-xl even:bg-gray-100">
                         <span class="inline-block w-6 h-6 border-4 border-white outline-3 outline-gray-600 rounded-full bg-green-500"></span>
@@ -140,7 +148,9 @@ const closePackInfo = () => {
                     </li>
                 </ul>
             </div>
-            <div class="mt-8 bg-white border-4 border-b-8 rounded-xl border-black p-4 transition-all">
+
+            <!-- card decks -->
+            <div class=" col-span-5  bg-white border-4 border-b-8 rounded-xl border-black p-4 transition-all">
                 <div class="grid grid-cols-3 gap-4">
                     <button v-for="pack in resolvedPacks" :key="pack.id" type="button" @click="selectPack(pack.id)" :disabled="!isHost" class="h-[340px] relative bg-black rounded-xl border-4 border-black p-8 overflow-hidden text-left transition transform hover:-translate-y-1 active:scale-95  disabled:cursor-not-allowed" :class="selectedPackIds.includes(pack.id) ? 'scale-95 ring-8 ring-yellow-400/50' : ''" :style="{ backgroundImage: `linear-gradient(to bottom, ${pack.style.gradient_from}, ${pack.style.gradient_to})` }">
 
@@ -179,6 +189,59 @@ const closePackInfo = () => {
                     </button>
                 </div>
             </div>
+
+
+            <!-- lobby settings -->
+            <div class="col-span-2  bg-white border-4 border-b-8 rounded-xl border-black p-6 text-black overflow-scroll-y max-h-full">
+
+
+                <Tabs>
+                    <Tab name="lobby" label="Lobby">
+                        <div class="space-y-6">
+                            <div class="flex flex-col gap-4 items-start">
+                                <div>
+                                    <h2 class="font-bold text-xl">Lobby blijft open</h2>
+                                    <p class="mt-2">Spelers kunnen blijven joinen nadat de game is gestart. Wel zo handig als iemand er uit donderd.</p>
+                                </div>
+                                <ToggleSwitch class="mt-2" name="sound-toggle2" />
+                            </div>
+                        </div>
+                    </Tab>
+
+                    <Tab name="game" label="Game">
+                        <div class="space-y-6">
+                            <div class="flex flex-col gap-4 items-start">
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <h2 class="font-bold text-xl">Personaliseer kaarten</h2>
+                                        <div class="font-bold border-2 border-b-4 rounded-full px-2 py-0.5 text-xs">Onze keuze</div>
+                                    </div>
+
+                                    <p class="mt-2">Gebruik namen van spelers in deze lobby in beschikbare kaarten. Om je game een vleugje persoonlijkheid te geven!</p>
+                                </div>
+                                <ToggleSwitch class="mt-2" name="sound-toggle" />
+                            </div>
+                            <div class="flex flex-col gap-4 items-start">
+                                <div>
+                                    <h2 class="font-bold text-xl">Scoreboard</h2>
+                                    <p class="mt-2">Laat een scoreboard voor, na en tijdens een spel zien. Beetje competitie kan geen kwaad! Toch?</p>
+                                </div>
+                                <ToggleSwitch class="mt-2" name="sound-toggle2" />
+                            </div>
+                        </div>
+                    </Tab>
+                </Tabs>
+
+
+
+
+
+
+
+
+
+
+            </div>
         </div>
 
         <!-- Info modal -->
@@ -207,7 +270,7 @@ const closePackInfo = () => {
                             <img class="" width="75" :src="detailPack.partnerUrl" alt="">
                         </div>
                         <div v-else class=" text-gray-600">
-                           Pack by <b>{{ detailPack.author ?? 'CardMadness' }}</b>
+                            Pack by <b>{{ detailPack.author ?? 'CardMadness' }}</b>
                         </div>
                     </div>
 

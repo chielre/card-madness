@@ -91,11 +91,14 @@ onBeforeUnmount(() => {
 
 <template>
     <div class="page-main min-h-screen flex justify-center items-center">
-        <div class="bg-noise"></div>
-        <div class="bg-grid"></div>
+        <div class="max-w-3/4">
 
-        <JoinScreen v-if="!hasJoined && !isLoading" :room-id="roomId" v-model:name-input="nameInput" :error-message="errorMessage" :players="players" @join="joinWithName" />
+            <div class="bg-noise"></div>
+            <div class="bg-grid"></div>
 
-        <PlayerListScreen v-if="hasJoined && !isLoading" :players="players" />
+            <JoinScreen v-if="!hasJoined && !isLoading" :room-id="roomId" v-model:name-input="nameInput" :error-message="errorMessage" :players="players" @join="joinWithName" />
+
+            <PlayerListScreen v-if="hasJoined && !isLoading" :players="players" />
+        </div>
     </div>
 </template>

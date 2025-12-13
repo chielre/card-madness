@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { watch, onMounted, computed, ref } from 'vue'
+import { useRoute } from "vue-router";
 import { useConnectionStore } from '@/store/ConnectionStore'
 import { useAudioStore } from '@/store/AudioStore'
 import { useLobbyStore } from '@/store/LobbyStore'
 
 import BaseButton from '@/components/ui/BaseButton.vue'
+
+import MenuIcon from 'vue-material-design-icons/Menu.vue';
 
 import LoadingPage from '@/pages/LoadingPage.vue'
 import ConnectionError from '@/pages/ConnectionError.vue'
@@ -19,6 +22,13 @@ const isConnected = computed(() => connection.isConnected)
 const hasJoined = computed(() =>
     lobby.players.some((p) => p.id === connection.socketId)
 )
+
+
+
+const route = useRoute();
+const isDevRoute = computed(() => route.path.startsWith("/dev"));
+
+
 
 let firstInteracted = ref(false)
 
@@ -40,15 +50,20 @@ const onFirstInteraction = async () => {
 }
 
 onMounted(() => {
+    if (isDevRoute.value) return;
     connection.connect()
     window.addEventListener('pointerdown', onFirstInteraction, { once: true })
 })
 </script>
 
 <template>
+    <main v-if="isDevRoute" class="flex-1 min-h-screen overflow-hidden">
+        <RouterView />
+    </main>
+
 
     <!-- Show loading -->
-    <LoadingPage v-if="isConnecting" />
+    <LoadingPage v-else-if="isConnecting" />
     <ConnectionError v-else-if="!isConnecting && !isConnected" />
 
     <!-- force first interaction for audio api -->
