@@ -26,7 +26,6 @@ const value = computed({
 
 <template>
     <div class="bg-white border-3 border-b-6 rounded-xl border-black grid grid-cols-2 p-1">
-        <!-- AAN -->
         <label class="cursor-pointer text-center">
             <input type="radio" :name="name" class="peer hidden" value="on" v-model="value" />
             <div class="peer-checked:bg-gray-300 rounded-lg font-bold font-roboto py-3 px-8  transition-all ease-in-out uppercase">
@@ -34,7 +33,6 @@ const value = computed({
             </div>
         </label>
 
-        <!-- UIT -->
         <label class="cursor-pointer text-center">
             <input type="radio" :name="name" class="peer hidden" value="off" v-model="value" />
             <div class="peer-checked:bg-gray-300 rounded-lg font-bold font-roboto py-3 px-6 transition-all ease-in-out uppercase">

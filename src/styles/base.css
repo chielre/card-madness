@@ -7,7 +7,7 @@ body {
     background: linear-gradient(20deg, #5c0672, #570191, #330191);
     margin: 0;
     overflow-x: hidden;
-    color:#000;
+    color: #000;
 }
 
 @layer utilities {
@@ -123,4 +123,68 @@ body {
     100% {
         transform: translate(5%, 0)
     }
+}
+
+.madness-card {
+    background: black;
+    border: 4px rgb(20, 20, 20) solid;
+    outline: black 2px solid;
+    font-weight: bold;
+    color: #FFF;
+    padding: 1rem;
+    border-radius: .75rem;
+    font-size: 1.2rem;
+    width: 200px;
+    height: 300px;
+    margin: 2px;
+    position: relative;
+}
+
+.madness-card::before {
+    content: "";
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    background-image: url('../assets/images/logo.png');
+    background-size: contain;
+    background-repeat: no-repeat;
+    width: 50px;
+    height: 30px;
+
+}
+
+.madness-card.card-white {
+    background: white;
+    color: black;
+    border-color: #9c9c9c;
+}
+
+.madness-card.card-back {
+    font-size: 0px;
+}
+
+.madness-card.card-back::before {
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    background-image: url('../assets/images/packs/bg/bg_haha.png');
+    background-repeat: repeat;
+
+}
+
+.madness-card.card-back::after {
+    content: "";
+    position: absolute;
+    inset:0;
+    background-image: url('../assets/images/logo.png');
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center center;
+    background-size: 120px;
+
+
+    width:100%;
+    height:100%;
+
 }

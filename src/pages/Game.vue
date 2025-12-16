@@ -24,20 +24,11 @@ const hasJoined = computed(() => {
     if (!socket) return false
     return !!players.value.find((p) => p.id === socket.id)
 })
+const normalizePlayers = (playerList: { id: string; name: string; ready?: boolean }[]) =>
+    playerList.map((p) => ({ ...p, ready: !!p.ready }))
 
 const goToError = () => router.replace({ name: 'error', query: { reason: 'room_not_found' } })
 
-const handlePlayerJoined = (payload: { id: string; name: string }) => {
-    lobby.addPlayer(payload)
-}
-
-const handlePlayerLeft = (payload: { id: string; players?: { id: string; name: string }[] }) => {
-    if (payload.players) {
-        lobby.players = payload.players
-    } else {
-        lobby.removePlayer(payload.id)
-    }
-}
 
 const loadPlayers = async () => {
     try {
@@ -61,12 +52,53 @@ const joinWithName = async () => {
     }
 }
 
+/*-----------------------------------
+Game room events
+*/
 const handlePacksUpdated = (payload: { packs: string[] }) => {
     lobby.selectedPacks = payload.packs
 }
-const handleRoomHostChanged = (payload: { hostId: string }) => {
+const handlePlayersUpdated = (payload: { id: string; players: { id: string; name: string; ready?: boolean }[] }) => {
+    if (payload.players) {
+        lobby.players = normalizePlayers(payload.players)
+    }
+}
+
+const handleRoomHostUpdated = (payload: { hostId: string }) => {
     lobby.host = payload.hostId
 }
+
+
+/*-----------------------------------
+Game player events
+*/
+const handlePlayerReady = (payload: { id: string; ready: boolean }) => {
+    lobby.updatePlayer(payload.id, { ready: payload.ready })
+}
+const handlePlayerJoined = (payload: { id: string; name: string; ready?: boolean }) => {
+    lobby.addPlayer(payload)
+}
+const handlePlayerLeft = (payload: { id: string; players?: { id: string; name: string; ready?: boolean }[] }) => {
+    if (payload.players) {
+        lobby.players = normalizePlayers(payload.players)
+    } else {
+        lobby.removePlayer(payload.id)
+    }
+}
+
+
+
+/*-----------------------------------
+Game socket events
+*/
+
+const handleGamePhaseChange = (payload: { phase: string }) => {
+    if (payload.phase) {
+        lobby.setPhase(payload.phase)
+    }
+    console.log(payload.phase);
+}
+
 
 
 onMounted(async () => {
@@ -74,7 +106,9 @@ onMounted(async () => {
     if (!socket) return
     socket.on('room:player-joined', handlePlayerJoined)
     socket.on('room:player-left', handlePlayerLeft)
-    socket.on('room:host-changed', handleRoomHostChanged)
+    socket.on('room:player-ready', handlePlayerReady)
+    socket.on('room:players-changed', handlePlayersUpdated)
+    socket.on('room:phase-changed', handleGamePhaseChange)
 
     socket.on('packs:updated', handlePacksUpdated)
 })
@@ -82,9 +116,11 @@ onMounted(async () => {
 onBeforeUnmount(() => {
     // laat de server weten dat we de lobby verlaten als we weg navigeren
     lobby.leaveLobby(roomId)
+
     if (!socket) return
     socket.off('room:player-joined', handlePlayerJoined)
     socket.off('room:player-left', handlePlayerLeft)
+    socket.off('room:player-ready', handlePlayerReady)
     socket.off('packs:updated', handlePacksUpdated)
 })
 </script>

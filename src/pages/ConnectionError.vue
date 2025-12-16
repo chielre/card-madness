@@ -14,8 +14,6 @@ const reconnect = () => {
     <div class="flex-1 min-h-screen overflow-hidden">
 
         <div class="page-main min-h-screen flex justify-center items-center">
-            <div class="bg-noise"></div>
-            <div class="bg-grid"></div>
 
             <div class="flex flex-col items-center">
                 <!-- Topbar -->

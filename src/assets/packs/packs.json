@@ -29,7 +29,7 @@
       "extension_subject": null
     },
     "weight": 3,
-    "description": "Om een vleugje zout te geven aan je avond. Ongecensureerd en extreem persoonlijk. Verwacht rare blikken een goede landing schaamte en hele bijzondere situaties. ",
+    "description": "Om een vleugje zout te geven aan je avond. Ongecensureerd en extreem persoonlijk. Verwacht rare blikken, een goede lading schaamte en hele bijzondere situaties. ",
     "style": {
       "logo": "nsfw_pack.png",
       "background": "bg_nsfw.png",
@@ -49,7 +49,7 @@
       "extension_subject": null
     },
     "weight": 4,
-    "description": "Geef je game een agresieve wending. Met de offensive pack komen harde discussies op gang en komen relaties op het spel. We hebben ons niet ingehouden, niet iedereen kan er om lachen ;)",
+    "description": "Geef je game een agresieve wending. Met de offensive pack komen harde discussies op gang en komen relaties op het spel. We hebben ons niet ingehouden.",
     "style": {
       "logo": "offensive_pack.png",
       "background": "bg_offensive.png",
@@ -98,7 +98,7 @@
       "music": "game_visto.mp3"
     }
   },
-   {
+  {
     "id": "madness",
     "name": "Madness pack",
     "author": "Chiel",
@@ -108,14 +108,14 @@
       "extension_subject": null
     },
     "weight": 1,
-    "description": "Raar, bijzonder, echte madness. Precies hoe we je de game willen laten spelen. Met deze pack brengt Chiel je game naar een lager niveau!",
+    "description": "Raar, grappig, bijzonder, echte madness! Precies hoe we je de game willen laten spelen. Bijzondere, onverwachtse combinaties!",
     "style": {
       "logo": "madness_pack.png",
       "background": "bg_haha.png",
       "partner_logo": null,
       "gradient_from": "#FFFFFF",
       "gradient_to": "#B4C164",
-      "music": ""
+      "music": "game_madness.mp3"
     }
   }
 ]
