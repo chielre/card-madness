@@ -18,6 +18,7 @@ const readyModalWrapper = ref<HTMLElement | null>(null)
 const readyModal = ref<HTMLElement | null>(null)
 const ReadyText = ref<HTMLElement | null>(null)
 let readyScreenVisible = ref(false);
+let tl: gsap.core.Timeline | null = null
 
 
 const setPlayerReady = async () => {
@@ -43,8 +44,68 @@ const prepareToOpen = async () => {
 
 }
 
+const playOutro = (cards: HTMLElement[] | Element[]) => {
+    const outroTl = gsap.timeline()
+        // overlay
+        .fromTo(
+            readyModal.value,
+            { opacity: 1, scale: 1 },
+            { opacity: 0, scale: 0, duration: 1.5, ease: 'readyBounce' },
+            0
+        )
+        .fromTo(
+            cards,
+            {
+                opacity: 1,
+                scale: 1,
+                y: 0,
+                rotate: 0,
+
+            },
+            {
+                opacity: 0,
+                scale: 0.6,
+                y: 40,
+                duration: 0.8,
+                rotate: () => gsap.utils.random(-12, 12),
+
+                ease: 'cardBounce',
+                stagger: {
+                    each: 0.08,
+                    from: 'random',
+                },
+            },
+            0
+        )
+        .fromTo(
+            ReadyText.value,
+            { opacity: 0, scale: 0 },
+            { opacity: 1, scale: 1, duration: 1.5, ease: 'readyBounce' },
+            0
+        )
+
+        .to(
+            ReadyText.value,
+            { opacity: 0, scale: 0, duration: 1, ease: 'readyBounce' },
+            1.7
+        )
+
+
+        .fromTo(
+            readyModalWrapper.value,
+            { opacity: 1 },
+            { opacity: 0, duration: 0.1, ease: 'power1.out' },
+            2
+        )
+
+    outroTl.call(() => {
+        ReadyText.value!.textContent = 'Everybody ready?'
+        readyScreenVisible.value = false
+    }, [], 2.2)
+}
+
+
 const open = async () => {
-    let tl: gsap.core.Timeline | null = null
     readyScreenVisible.value = true;
 
     await nextTick()
@@ -56,6 +117,11 @@ const open = async () => {
 
     CustomEase.create('readyBounce', '0.16,1.45,0.34,1')
     CustomEase.create('cardBounce', '0.18,1.4,0.35,1')
+
+    if (tl) {
+        tl.kill()
+        tl = null
+    }
 
     tl = gsap.timeline()
         // overlay
@@ -221,73 +287,11 @@ const open = async () => {
         ReadyText.value!.textContent = 'Haha, not yet!'
     }, [], 50)
 
-    // // reset
-    // tl.call(
-    //     () => {
-    //         gsap.timeline()
-    //             // overlay
-    //             .fromTo(
-    //                 readyModal.value,
-    //                 { opacity: 1, scale: 1 },
-    //                 { opacity: 0, scale: 0, duration: 1.5, ease: 'readyBounce' },
-    //                 0
-    //             )
-    //             .fromTo(
-    //                 cards,
-    //                 {
-    //                     opacity: 1,
-    //                     scale: 1,
-    //                     y: 0,
-    //                     rotate: 0,
-
-    //                 },
-    //                 {
-    //                     opacity: 0,
-    //                     scale: 0.6,
-    //                     y: 40,
-    //                     duration: 0.8,
-    //                     rotate: () => gsap.utils.random(-12, 12),
-
-    //                     ease: 'cardBounce',
-    //                     stagger: {
-    //                         each: 0.08,
-    //                         from: 'random',
-    //                     },
-    //                 },
-    //                 0
-    //             )
-    //             .fromTo(
-    //                 ReadyText.value,
-    //                 { opacity: 0, scale: 0 },
-    //                 { opacity: 1, scale: 1, duration: 1.5, ease: 'readyBounce' },
-    //                 0
-    //             )
-
-    //             .to(
-    //                 ReadyText.value,
-    //                 { opacity: 0, scale: 0, duration: 1, ease: 'readyBounce' },
-    //                 1.7
-    //             )
-
-
-    //             .fromTo(
-    //                 readyModalWrapper.value,
-    //                 { opacity: 1 },
-    //                 { opacity: 0, duration: 0.1, ease: 'power1.out' },
-    //                 2
-    //             )
-
-    //     },
-    //     [],
-    //     50
-    // )
-
-    // tl.call(() => {
-    //     ReadyText.value!.textContent = 'Everybody ready?'
-    //     readyScreenVisible.value = false;
-    //     tl = null;
-
-    // }, [], 52)
+    // reset
+    tl.call(() => playOutro(cards), [], 50)
+    tl.call(() => {
+        tl = null
+    }, [], 52)
 
     audio.playCountDown("52");
 }
@@ -295,7 +299,7 @@ const open = async () => {
 
 
 
-defineExpose({ open })
+defineExpose({ open, reset: () => playOutro(gsap.utils.toArray<HTMLElement>('.card-anim')) })
 
 </script>
 

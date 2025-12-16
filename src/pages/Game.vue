@@ -96,7 +96,14 @@ const handleGamePhaseChange = (payload: { phase: string }) => {
     if (payload.phase) {
         lobby.setPhase(payload.phase)
     }
+    console.log(`New game phase: ${payload.phase}`);
+}
+const handleGamePhaseTimeout = (payload: { phase: string }) => {
+    if (payload.phase) {
+        lobby.markPhaseTimeout()
+    }
     console.log(payload.phase);
+
 }
 
 
@@ -109,6 +116,7 @@ onMounted(async () => {
     socket.on('room:player-ready', handlePlayerReady)
     socket.on('room:players-changed', handlePlayersUpdated)
     socket.on('room:phase-changed', handleGamePhaseChange)
+    socket.on('room:phase-timeout', handleGamePhaseTimeout)
 
     socket.on('packs:updated', handlePacksUpdated)
 })
@@ -121,6 +129,9 @@ onBeforeUnmount(() => {
     socket.off('room:player-joined', handlePlayerJoined)
     socket.off('room:player-left', handlePlayerLeft)
     socket.off('room:player-ready', handlePlayerReady)
+    socket.off('room:players-changed', handlePlayersUpdated)
+    socket.off('room:phase-changed', handleGamePhaseChange)
+    socket.off('room:phase-timeout', handleGamePhaseTimeout)
     socket.off('packs:updated', handlePacksUpdated)
 })
 </script>

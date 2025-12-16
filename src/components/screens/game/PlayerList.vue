@@ -146,7 +146,17 @@ watch(
         if (phase === 'starting') {
             openReadyModal();
 
+        } else if (phase === 'intro') {
+            readyModalRef.value?.reset()
+            audio.PlayIntroGame();
         }
+    }
+)
+
+watch(
+    () => lobby.phaseTimeoutTick,
+    () => {
+        readyModalRef.value?.reset()
     }
 )
 

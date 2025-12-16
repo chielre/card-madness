@@ -8,6 +8,7 @@ import gameNsfwMusic from '@assets/audio/game_nsfw.mp3'
 import gameCmdMusic from '@assets/audio/game_cmd.mp3'
 import countDown52 from '@assets/audio/countdown_52.mp3'
 import countDown33 from '@assets/audio/countdown_33.mp3'
+import introGameMusic from '@assets/audio/intro_game.mp3'
 
 type Track = string | null
 type Seconds = '52' | '33'
@@ -17,6 +18,9 @@ let lobbyHowl: Howl | null = null
 let gameHowl: Howl | null = null
 let gameNsfwHowl: Howl | null = null
 let gameCmdHowl: Howl | null = null
+let introGameHowl: Howl | null = null
+
+
 
 const customHowls: Record<string, Howl> = {}
 let oneShotHowl: Howl | null = null
@@ -74,6 +78,10 @@ export const useAudioStore = defineStore('audio', {
       if (!gameCmdHowl) gameCmdHowl = new Howl({ src: [gameCmdMusic], loop: true, volume: 0.5 })
       return gameCmdHowl
     },
+    ensureIntroGame() {
+      if (!introGameHowl) introGameHowl = new Howl({ src: [introGameMusic], loop: true, volume: 0.5 })
+      return introGameHowl
+    },
     ensureCustom(key: string, src: string) {
       if (!customHowls[key]) customHowls[key] = new Howl({ src: [src], loop: true, volume: 0.5 })
       return customHowls[key]
@@ -94,6 +102,7 @@ export const useAudioStore = defineStore('audio', {
     readyGame() { return waitForLoad(this.ensureGame()) },
     readyGameNsfw() { return waitForLoad(this.ensureGameNsfw()) },
     readyGameCmd() { return waitForLoad(this.ensureGameCmd()) },
+    readyIntroGame() { return waitForLoad(this.ensureIntroGame()) },
     readyCustom(key: string, src: string) { return waitForLoad(this.ensureCustom(key, src)) },
 
     readyCountDown(seconds: Seconds) {
@@ -153,6 +162,14 @@ export const useAudioStore = defineStore('audio', {
       await this.readyGameCmd()
       this.ensureGameCmd().play()
       this.current = 'game_cmd'
+    },
+
+    async PlayIntroGame() {
+      if (this.current === 'intro_game') return
+      this.stopAll()
+      await this.readyIntroGame()
+      this.ensureIntroGame().play()
+      this.current = 'intro_game'
     },
 
     async playCustom(key: string, src: string) {

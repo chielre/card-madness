@@ -68,12 +68,14 @@ export const setPhase = ({ games, roomId, to }) => {
     const Phase = Object.freeze({
         LOBBY: 'lobby',
         STARTING: 'starting',
+        INTRO: 'intro',
         RESULTS: 'results',
     })
 
     const transitions = {
         [Phase.LOBBY]: new Set([Phase.STARTING]),
-        [Phase.STARTING]: new Set([Phase.RESULTS]),
+        [Phase.STARTING]: new Set([Phase.INTRO]),
+        [Phase.INTRO]: new Set([Phase.RESULTS]),
         [Phase.RESULTS]: new Set([Phase.LOBBY]),
     }
 

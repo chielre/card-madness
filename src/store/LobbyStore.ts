@@ -15,6 +15,7 @@ export const useLobbyStore = defineStore('lobby', {
         selectedPacks: [] as string[],
         host: '' as string,
         phase: 'lobby' as string,
+        phaseTimeoutTick: 0,
     }),
 
     actions: {
@@ -37,7 +38,7 @@ export const useLobbyStore = defineStore('lobby', {
         },
 
         setPhase(phase: string) {
-            this.phase = phase;
+            this.phase = phase
         },
 
         async createLobby(name: string) {
@@ -140,6 +141,10 @@ export const useLobbyStore = defineStore('lobby', {
                 throw new Error('Current player is not set')
             }
             return this.getCurrentPlayer()
+        },
+
+        markPhaseTimeout() {
+            this.phaseTimeoutTick += 1
         }
 
     },

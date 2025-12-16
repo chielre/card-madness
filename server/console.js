@@ -1,7 +1,7 @@
 import logUpdate from 'log-update'
 import chalk from 'chalk'
 
-export const startConsole = ({ io, games, intervalMs = 500 }) => {
+export const startConsole = ({ io, games, phaseTimers, intervalMs = 500 }) => {
     const startedAt = Date.now()
 
     const fmtUptime = (ms) => {
@@ -26,9 +26,21 @@ export const startConsole = ({ io, games, intervalMs = 500 }) => {
         ].join(chalk.bold.gray(" | "))
     }
 
+    const phaseTimerLine = (roomId, entry) => {
+        const remainingMs = entry?.expiresAt ? Math.max(0, entry.expiresAt - Date.now()) : null
+        const remaining = remainingMs !== null ? `${Math.ceil(remainingMs / 1000)}s` : 'n/a'
+        return [
+            chalk.bold(roomId),
+            `phase:${entry?.phase ?? '?'}`,
+            `remaining:${remaining}`,
+        ].join(chalk.bold.gray(" | "))
+    }
+
+
     const updateConsole = () => {
         const sockets = io.of("/").sockets.size
         const lobbies = games.size
+        const timers = phaseTimers.size
         const uptime = fmtUptime(Date.now() - startedAt)
 
         const lobbyList =
@@ -37,6 +49,13 @@ export const startConsole = ({ io, games, intervalMs = 500 }) => {
                 : [...games.values()]
                     .sort((a, b) => a.lobbyId.localeCompare(b.lobbyId))
                     .map(g => "  " + lobbyLine(g))
+                    .join("\n")
+
+        const phaseTimersList =
+            timers === 0
+                ? chalk.gray("  (geen timers)")
+                : [...phaseTimers.entries()]
+                    .map(([roomId, entry]) => "  " + phaseTimerLine(roomId, entry))
                     .join("\n")
 
         logUpdate([
@@ -49,6 +68,11 @@ export const startConsole = ({ io, games, intervalMs = 500 }) => {
             "",
             chalk.bold("Lobbies:"),
             lobbyList,
+            "",
+            chalk.bold("Phase timers:"),
+            phaseTimersList,
+
+
         ].join("\n"))
     }
 

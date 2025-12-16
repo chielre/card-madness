@@ -1,17 +1,15 @@
 import { createServer } from 'http'
 import { Server } from 'socket.io'
 import { nanoid } from 'nanoid'
-import logUpdate from 'log-update';
 import chalk from 'chalk';
 
 // server files
-import { games, socketRooms } from './state/store.js'
+import { games, socketRooms, phaseTimers } from './state/store.js'
 import { registerHandlers } from './io/registerHandlers.js'
 import { startConsole } from './console.js'
 
 const PORT = process.env.PORT || 3000
 
-logUpdate(chalk.yellow("Server starting up: "));
 
 
 const httpServer = createServer()
@@ -40,7 +38,6 @@ const createDevelopmentLobby = () => {
         phase: 'lobby',
         selectedPacks: [],
     })
-    logUpdate(chalk.yellow("Server starting up: created development lobby " + TEST_LOBBY_ID));
 }
 
 createDevelopmentLobby();
@@ -52,7 +49,7 @@ io.on('connection', (socket) => {
 })
 
 httpServer.listen(PORT, () => {
-    logUpdate(chalk.green("Server started: Socket.io server listening on http://localhost:${PORT}"));
+    console.log('')
 })
 
-startConsole({ io, games, intervalMs: 500 });
+startConsole({ io, games, phaseTimers, intervalMs: 500 });
