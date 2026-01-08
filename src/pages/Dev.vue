@@ -28,14 +28,19 @@ const startGame = () => {
     <div class="page-main min-h-screen flex justify-center items-center">
 
 
-
         <div class="bg-noise"></div>
         <div class="bg-grid"></div>
         <div class="max-w-3/4">
             <div class="flex justify-between items-center gap-4">
                 <div>
                     <img class="" width="200" src="../assets/images/logo.png" alt="">
-
+                    <div class="madness-card card-black  ">
+                        Can ________ hurry up? It takes so long!
+                    </div>
+                    <div class="madness-card card-white card-back">
+                        Can ________ hurry up? It takes so long!
+                    </div>
+                    
 
                 </div>
                 <div class="border-4 border-b-8 border-black bg-white text-2xl text-black font-black px-6 py-1 rounded-full" @click="startGame">3 players</div>

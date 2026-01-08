@@ -24,6 +24,12 @@ export const registerPlayerHandlers = ({ io, socket, games }) => {
                         roomId,
                         phase: phaseRes.game.phase,
                         defaultDurations: PHASE_DEFAULT_DURATIONS,
+                        onTimeout: () => {
+                            const nextRes = setPhase({ games, roomId, to: 'choosing' })
+                            if (!nextRes.error) {
+                                io.to(roomId).emit('room:phase-changed', { phase: nextRes.game.phase })
+                            }
+                        },
                     })
                 }
             } else {

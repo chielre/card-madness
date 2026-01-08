@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, nextTick, withDefaults, defineProps } from "vue";
+import { computed, ref, nextTick } from "vue";
 import gsap from "gsap";
 
 import { useAudioStore } from '@/store/AudioStore'

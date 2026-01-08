@@ -71,7 +71,7 @@
     "description": "Ergens ver weg in een Nederlandse stad genaamd Groningen, bestaat de studie CMD. Deze card pack neemt je mee in de bizarre wereld van CMD!",
     "style": {
       "logo": "cmd_pack.png",
-      "background": "bg_cmd.png",
+      "background": "balls.png",
       "partner_logo": "hanze.png",
       "gradient_from": "#D27519",
       "gradient_to": "#6C4F00",
@@ -91,7 +91,7 @@
     "description": "Participatief onderzoek doen, of wat het ook moet zijn. In deze pack nemen we je mee in de wereld van Vistolabs",
     "style": {
       "logo": "visto_pack.png",
-      "background": "bg_visto.png",
+      "background": "balls2.png",
       "partner_logo": "visto.png",
       "gradient_from": "#001029",
       "gradient_to": "#1CB88E",

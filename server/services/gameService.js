@@ -69,13 +69,15 @@ export const setPhase = ({ games, roomId, to }) => {
         LOBBY: 'lobby',
         STARTING: 'starting',
         INTRO: 'intro',
+        CHOOSING: 'choosing',
         RESULTS: 'results',
     })
 
     const transitions = {
         [Phase.LOBBY]: new Set([Phase.STARTING]),
         [Phase.STARTING]: new Set([Phase.INTRO]),
-        [Phase.INTRO]: new Set([Phase.RESULTS]),
+        [Phase.INTRO]: new Set([Phase.CHOOSING]),
+        [Phase.CHOOSING]: new Set([Phase.RESULTS]),
         [Phase.RESULTS]: new Set([Phase.LOBBY]),
     }
 

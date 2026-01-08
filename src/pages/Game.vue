@@ -3,15 +3,25 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useConnectionStore } from '@/store/ConnectionStore'
 import { useLobbyStore } from '@/store/LobbyStore'
+import { useAudioStore } from '@/store/AudioStore'
 
 // Screens (optioneel te gebruiken)
 import JoinScreen from '@/components/screens/game/Join.vue'
-import PlayerListScreen from '@/components/screens/game/PlayerList.vue'
+import GameRoomScreen from '@/components/screens/game/GameRoom.vue'
 
 const route = useRoute()
 const router = useRouter()
 const connection = useConnectionStore()
 const lobby = useLobbyStore()
+const audio = useAudioStore()
+
+const swooshFiles = import.meta.glob('@/assets/audio/effects/swoosh-*.mp3', {
+    eager: true,
+    import: 'default',
+}) as Record<string, string>
+const swooshUrls = Object.values(swooshFiles)
+let readyMap = new Map<string, boolean>()
+let readyMapInitialized = false
 
 const nameInput = ref('')
 const isLoading = ref(true)
@@ -29,12 +39,23 @@ const normalizePlayers = (playerList: { id: string; name: string; ready?: boolea
 
 const goToError = () => router.replace({ name: 'error', query: { reason: 'room_not_found' } })
 
+const updateReadyMap = (players: { id: string; ready?: boolean }[]) => {
+    readyMap = new Map(players.map((p) => [p.id, !!p.ready]))
+    readyMapInitialized = true
+}
+
+const playReadySwoosh = () => {
+    if (!swooshUrls.length) return
+    const src = swooshUrls[Math.floor(Math.random() * swooshUrls.length)]
+    audio.playEffectOnce(src, 0.8)
+}
 
 const loadPlayers = async () => {
     try {
         socket = await connection.ensureSocket()
         const res = await lobby.fetchState(roomId)
         if (res?.error === 'not_found') return goToError()
+        updateReadyMap(lobby.players)
     } catch (e) {
         errorMessage.value = e instanceof Error ? e.message : 'Kon spelers niet laden'
     } finally {
@@ -60,12 +81,26 @@ const handlePacksUpdated = (payload: { packs: string[] }) => {
 }
 const handlePlayersUpdated = (payload: { id: string; players: { id: string; name: string; ready?: boolean }[] }) => {
     if (payload.players) {
-        lobby.players = normalizePlayers(payload.players)
+        const nextPlayers = normalizePlayers(payload.players)
+        if (!readyMapInitialized) {
+            updateReadyMap(nextPlayers)
+        } else {
+            nextPlayers.forEach((player) => {
+                const wasReady = readyMap.get(player.id) ?? false
+                const isReady = !!player.ready
+                if (!wasReady && isReady) {
+                    playReadySwoosh()
+                }
+            })
+            updateReadyMap(nextPlayers)
+        }
+        lobby.players = nextPlayers
     }
 }
 
 const handleRoomHostUpdated = (payload: { hostId: string }) => {
     lobby.host = payload.hostId
+    console.log(`New lobby host: ${payload.hostId}`);
 }
 
 
@@ -74,15 +109,22 @@ Game player events
 */
 const handlePlayerReady = (payload: { id: string; ready: boolean }) => {
     lobby.updatePlayer(payload.id, { ready: payload.ready })
+    console.log(`Player ready: ${payload.id}`);
+
+
 }
 const handlePlayerJoined = (payload: { id: string; name: string; ready?: boolean }) => {
     lobby.addPlayer(payload)
+    console.log(`New player joined: ${payload.name}`);
+
 }
 const handlePlayerLeft = (payload: { id: string; players?: { id: string; name: string; ready?: boolean }[] }) => {
     if (payload.players) {
         lobby.players = normalizePlayers(payload.players)
     } else {
         lobby.removePlayer(payload.id)
+        console.log(`Player left: ${payload.id}`);
+
     }
 }
 
@@ -102,7 +144,7 @@ const handleGamePhaseTimeout = (payload: { phase: string }) => {
     if (payload.phase) {
         lobby.markPhaseTimeout()
     }
-    console.log(payload.phase);
+    console.log(`Phase timeout: ${payload.phase}`);
 
 }
 
@@ -137,15 +179,15 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <div class="page-main min-h-screen flex justify-center items-center">
-        <div class="max-w-3/4">
+    <div class="page-main min-h-screen flex justify-center items-center px-8">
+        <div class="w-[1920px]">
 
             <div class="bg-noise"></div>
             <div class="bg-grid"></div>
 
             <JoinScreen v-if="!hasJoined && !isLoading" :room-id="roomId" v-model:name-input="nameInput" :error-message="errorMessage" :players="players" @join="joinWithName" />
 
-            <PlayerListScreen v-if="hasJoined && !isLoading" :players="players" />
+            <GameRoomScreen v-if="hasJoined && !isLoading" :players="players" />
         </div>
     </div>
 </template>

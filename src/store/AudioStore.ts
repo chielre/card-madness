@@ -79,7 +79,7 @@ export const useAudioStore = defineStore('audio', {
       return gameCmdHowl
     },
     ensureIntroGame() {
-      if (!introGameHowl) introGameHowl = new Howl({ src: [introGameMusic], loop: true, volume: 0.5 })
+      if (!introGameHowl) introGameHowl = new Howl({ src: [introGameMusic], loop: false, volume: 0.5 })
       return introGameHowl
     },
     ensureCustom(key: string, src: string) {
@@ -200,6 +200,12 @@ export const useAudioStore = defineStore('audio', {
 
       oneShotHowl!.play()
       this.current = track
+    },
+
+    playEffectOnce(src: string, volume = 0.7) {
+      const fx = new Howl({ src: [src], loop: false, volume })
+      fx.once('end', () => fx.unload())
+      fx.play()
     },
   },
 })
