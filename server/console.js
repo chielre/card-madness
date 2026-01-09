@@ -38,6 +38,9 @@ export const startConsole = ({ io, games, phaseTimers, intervalMs = 500 }) => {
 
 
     const updateConsole = () => {
+    
+
+
         const sockets = io.of("/").sockets.size
         const lobbies = games.size
         const timers = phaseTimers.size
@@ -59,20 +62,15 @@ export const startConsole = ({ io, games, phaseTimers, intervalMs = 500 }) => {
                     .join("\n")
 
         logUpdate([
-            chalk.white.bgBlack(" CardMadness server ") + chalk.black.bgWhite(" 1.0.0 "),
-            `${chalk.bold("Made with")} ${chalk.red("♥")} ${chalk.bold("by Chiel")}`,
-            "",
+            `${chalk.white.bgBlack(" CardMadness server ")} ${chalk.black.bgWhite(" 1.0.0 ")}`,
+            `${chalk.bold("Made with")} ${chalk.red("♥")} ${chalk.bold("by Chiel")} \n`,
             `${chalk.green("●")} ${chalk.bold("Sockets")}: ${sockets}`,
             `${chalk.cyan("●")} ${chalk.bold("Lobbies")}: ${lobbies}`,
             `${chalk.yellow("●")} ${chalk.bold("Uptime")}: ${uptime}`,
-            "",
-            chalk.bold("Lobbies:"),
-            lobbyList,
-            "",
-            chalk.bold("Phase timers:"),
-            phaseTimersList,
-
-
+            `${chalk.bold("Lobbies:")}`,
+            `${lobbyList}`,
+            `${chalk.bold("Phase timers:")}`,
+            `${phaseTimersList}`
         ].join("\n"))
     }
 
