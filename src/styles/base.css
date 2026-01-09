@@ -125,6 +125,53 @@ body {
     }
 }
 
+/* MIRROR extra state: boven play zone */
+.drag--mirror.drag--over-playzone {
+    background: red !important;
+}
+
+.draggable-card {
+    user-select: none;
+    /* touch-action alleen nodig op touch devices, maar mag altijd */
+    touch-action: none;
+}
+
+.draggable-card.drag--priming {
+    will-change: transform;
+    transition: transform 60ms linear;
+    transform: translate(var(--p-tx, 0px), var(--p-ty, 0px)) rotate(var(--p-rot, 0deg));
+}
+
+.drag--mirror {
+    opacity: 1 !important;
+    transition-duration: 20ms !important;
+    transform-style: preserve-3d;
+    will-change: transform;
+    filter: drop-shadow(0 18px 18px rgba(0, 0, 0, 0.25));
+}
+
+.draggable-card.drag--source {
+    opacity: 0;
+}
+
+.play-slot {
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.play-slot.has-card .play-placeholder {
+    display: none;
+}
+
+.play-slot .draggable-card {
+    margin: 0;
+}
+
+
+
+
 .madness-card {
     container-type: inline-size;
     background: black;
@@ -140,7 +187,10 @@ body {
     margin: 2px;
     position: relative;
     display: block;
+
+    @apply select-none
 }
+
 
 .madness-card::before {
     content: "";

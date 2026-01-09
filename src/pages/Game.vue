@@ -8,6 +8,9 @@ import { useAudioStore } from '@/store/AudioStore'
 // Screens (optioneel te gebruiken)
 import JoinScreen from '@/components/screens/game/Join.vue'
 import GameRoomScreen from '@/components/screens/game/GameRoom.vue'
+import IntroScreen from '@/components/screens/game/Intro.vue'
+import LobbyScreen from '@/components/screens/game/Lobby.vue'
+import BoardScreen from '@/components/screens/game/Board.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -188,6 +191,13 @@ onBeforeUnmount(() => {
             <div class="bg-grid"></div>
 
             <JoinScreen v-if="!hasJoined && !isLoading" :room-id="roomId" v-model:name-input="nameInput" :error-message="errorMessage" :players="players" @join="joinWithName" />
+
+            <!-- <template v-else-if="hasJoined && !isLoading">
+                <LobbyScreen />
+                <IntroScreen />
+                <BoardScreen />
+            </template> -->
+
 
             <GameRoomScreen v-else-if="hasJoined && !isLoading" :players="players" />
         </div>

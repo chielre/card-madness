@@ -117,5 +117,25 @@
       "gradient_to": "#1CB88E",
       "music": "game_visto.mp3"
     }
+  },
+  {
+    "id": "olaf",
+    "name": "Olaf pack",
+    "author": "CardMadness, Olaf",
+    "nsfw": false,
+    "extension": {
+      "base_pack": null,
+      "extension_subject": null
+    },
+    "weight": 2,
+    "description": "Juupppp, dat is 'm hoor, de enige echte olaf pack. Fitness, biceps, Mini's en de vrouwtjes. Kies je deze niet? Skill issue.",
+    "style": {
+      "logo": "olaf.png",
+      "background": "blocks.png",
+      "partner_logo": null,
+      "gradient_from": "#FF0099",
+      "gradient_to": "#00FAE5",
+      "music": "game_olaf.mp3"
+    }
   }
 ]

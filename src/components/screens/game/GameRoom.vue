@@ -700,6 +700,8 @@ onBeforeUnmount(() => {
             <CardPack v-for="pack in introPacks" :pack="pack" :key="pack.id" :selected="false" />
         </div>
     </section>
+
+    
     <section v-show="showGameScreen" ref="gameRoomRef" class="fixed inset-0 z-30 pointer-events-none opacity-0">
         Test 123
     </section>
