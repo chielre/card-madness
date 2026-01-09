@@ -126,6 +126,7 @@ body {
 }
 
 .madness-card {
+    container-type: inline-size;
     background: black;
     border: 4px rgb(20, 20, 20) solid;
     outline: black 2px solid;
@@ -138,6 +139,7 @@ body {
     height: 300px;
     margin: 2px;
     position: relative;
+    display: block;
 }
 
 .madness-card::before {
@@ -150,6 +152,22 @@ body {
     background-repeat: no-repeat;
     width: 50px;
     height: 30px;
+
+}
+
+.madness-card.card-responsive {
+    width: 100%;
+    height: 100%;
+    font-size: 1cqmin;
+    padding: 10%;
+
+    aspect-ratio: 0.6 / 1;
+}
+
+.madness-card.card-sm {
+    width: 150px;
+    height: 225px;
+    font-size: 1rem;
 
 }
 
@@ -176,7 +194,7 @@ body {
 .madness-card.card-back::after {
     content: "";
     position: absolute;
-    inset:0;
+    inset: 0;
     background-image: url('../assets/images/logo.png');
     background-size: contain;
     background-repeat: no-repeat;
@@ -184,7 +202,47 @@ body {
     background-size: 120px;
 
 
-    width:100%;
-    height:100%;
+    width: 100%;
+    height: 100%;
 
+}
+
+.btn-animated {
+    background: #230336;
+    color: #fff;
+    font-weight: 700;
+    text-shadow: 0 2px 1px #000;
+    border-radius: 0.75rem;
+    cursor: pointer;
+
+    font-size: 1.2rem;
+
+    padding-right: 2rem;
+    padding-left: 2rem;
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+
+
+    box-shadow:
+        0 10px 0 #1d042c,
+        0 8px 6px rgba(0, 0, 0, .25),
+        inset 0 -1px 3px 1px rgba(255, 255, 255, 0.1);
+
+    transition: transform .15s cubic-bezier(0.959, 0.261, 0.323, 0.796), box-shadow .15s cubic-bezier(0.959, 0.261, 0.323, 0.796);
+}
+
+.btn-animated:hover {
+    transform: translateY(3px);
+    box-shadow:
+        0 7px 0 #1d042c,
+        0 8px 6px rgba(0, 0, 0, .25),
+        inset 0 -1px 3px 1px rgba(255, 255, 255, 0.1);
+}
+
+.btn-animated:active {
+    transform: translateY(10px);
+    box-shadow:
+        0 1px 0 #1d042c,
+        0 3px 4px rgba(0, 0, 0, .25),
+        inset 0 -1px 3px 1px rgba(255, 255, 255, 0.1);
 }

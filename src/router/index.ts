@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router'
-import Lobby from '@/pages/Lobby.vue'
+import CreateLobby from '@/pages/CreateLobby.vue'
 import Main from '@/pages/MainPage.vue'
 import Game from '@/pages/Game.vue'
 import Dev from '@/pages/Dev.vue'
@@ -14,7 +14,7 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/lobby',
         name: 'lobby',
-        component: Lobby,
+        component: CreateLobby,
     },
     {
         path: '/game/:id',

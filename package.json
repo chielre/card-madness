@@ -9,6 +9,7 @@
         "preview": "vite preview"
     },
     "dependencies": {
+        "@shopify/draggable": "^1.2.1",
         "@tailwindcss/vite": "^4.1.17",
         "animejs": "^4.2.2",
         "gsap": "^3.12.0",

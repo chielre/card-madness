@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 
 const props = defineProps<{
+    type?: 'animated' | 'block'
     color?: 'white' | 'black'
     size?: 'md' | 'lg'
     disabled?: boolean
@@ -17,15 +18,24 @@ const onClick = () => {
 }
 
 // --- base styling ---
-const baseClasses = 'uppercase border-b-8 text-black shadow-xl border-4 rounded-xl font-bold transition-all cursor-pointer select-none active:scale-105'
+const baseClasses = 'btn'
+
+const typeClasses = computed(() => {
+    switch (props.type) {
+        case 'animated':
+            return 'btn-animated'
+        default:
+            return 'btn-animated'
+    }
+})
 
 // --- dynamic colors ---
 const colorClasses = computed(() => {
     switch (props.color) {
         case 'black':
-            return 'bg-black text-white border-black hover:bg-white hover:text-black'
+            return 'btn-black'
         default:
-            return 'bg-white text-black border-black hover:bg-black hover:text-white'
+            return 'btn-white'
     }
 })
 
@@ -33,9 +43,9 @@ const colorClasses = computed(() => {
 const sizeClasses = computed(() => {
     switch (props.size) {
         case 'lg':
-            return 'text-2xl py-4 px-6'
+            return ' btn-lg'
         default:
-            return 'text-xl py-3 px-4'
+            return 'btn-md'
     }
 })
 </script>
@@ -44,6 +54,8 @@ const sizeClasses = computed(() => {
 <template>
     <button :class="[
         baseClasses,
+        typeClasses,
+
         colorClasses,
         sizeClasses,
         { 'opacity-50 cursor-not-allowed': disabled }

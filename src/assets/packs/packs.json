@@ -20,6 +20,26 @@
     }
   },
   {
+    "id": "madness",
+    "name": "Madness pack",
+    "author": "Chiel",
+    "nsfw": false,
+    "extension": {
+      "base_pack": null,
+      "extension_subject": null
+    },
+    "weight": 1,
+    "description": "Raar, grappig, bijzonder, echte madness! Precies hoe we je de game willen laten spelen. Bijzondere, onverwachtse combinaties!",
+    "style": {
+      "logo": "madness_pack.png",
+      "background": "bg_haha.png",
+      "partner_logo": null,
+      "gradient_from": "#FFFFFF",
+      "gradient_to": "#B4C164",
+      "music": "game_madness.mp3"
+    }
+  },
+  {
     "id": "nsfw",
     "name": "NSFW Pack",
     "author": "CardMadness",
@@ -96,26 +116,6 @@
       "gradient_from": "#001029",
       "gradient_to": "#1CB88E",
       "music": "game_visto.mp3"
-    }
-  },
-  {
-    "id": "madness",
-    "name": "Madness pack",
-    "author": "Chiel",
-    "nsfw": false,
-    "extension": {
-      "base_pack": null,
-      "extension_subject": null
-    },
-    "weight": 1,
-    "description": "Raar, grappig, bijzonder, echte madness! Precies hoe we je de game willen laten spelen. Bijzondere, onverwachtse combinaties!",
-    "style": {
-      "logo": "madness_pack.png",
-      "background": "bg_haha.png",
-      "partner_logo": null,
-      "gradient_from": "#FFFFFF",
-      "gradient_to": "#B4C164",
-      "music": "game_madness.mp3"
     }
   }
 ]

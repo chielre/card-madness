@@ -594,50 +594,7 @@ onBeforeUnmount(() => {
             <div class="bg-black/50 backdrop-blur-sm rounded-xl border-black p-4 transition-all">
 
                 <div class="grid grid-cols-4 gap-3">
-
                     <CardPack v-for="pack in resolvedPacks" :pack="pack" :key="pack.id" :selected="selectedPackIds.includes(pack.id)" @click="selectPack(pack.id)" @show-info="showPackInfo" />
-
-
-
-
-                    <!-- <button v-for="pack in resolvedPacks" :key="pack.id" type="button" @click="selectPack(pack.id)" :disabled="!isHost" class="h-[340px] relative bg-black rounded-xl border-4 border-black p-8 overflow-hidden text-left transition transform hover:-translate-y-1 active:scale-95  disabled:cursor-not-allowed" :class="selectedPackIds.includes(pack.id) ? 'scale-95 ring-8 ring-yellow-400/50' : ''" :style="{ backgroundImage: `linear-gradient(to bottom, ${pack.style.gradient_from}, ${pack.style.gradient_to})` }">
-
-
-
-
-                        <div type="button" class="absolute top-1 right-1 w-8 h-8 rounded-full border-2 border-white bg-black/60 hover:bg-black text-white text-lg flex items-center justify-center" @click.stop="showPackInfo(pack.id)">
-                            i
-                        </div>
-
-                        <div class="absolute inset-0 bg-center bg-repeat opacity-60 pointer-events-none" :style="{ backgroundImage: `url(${pack.bgUrl})`, backgroundSize: '200px' }"></div>
-                        <div class="relative text-white font-bold flex flex-col h-full items-center justify-between w-full">
-
-
-                            <div class="relative">
-                                <img width="180" :src="pack.logoUrl" class=" select-none" alt="">
-                                <img v-if="pack.extension.base_pack" width="120" src="../../../assets/images/pack_extended.png" class=" absolute bottom-2 right-0 -rotate-12" alt="">
-                                <img v-if="pack.nsfw" width="60" src="../../../assets/images/pack_nsfw.png" class=" absolute bottom-2 left-3 rotate-12" alt="">
-                            </div>
-
-                            <div class="text-outline-black">
-                                {{ pack.extension.extension_subject ?? '' }}
-
-                            </div>
-
-
-                            <div v-if="pack.partnerUrl" class="flex gap-4 items-center">
-                                <img class="" width="75" src="../../../assets/images/logo.png" alt="">
-                                <img class="" width="75" :src="pack.partnerUrl" alt="">
-                            </div>
-
-                            <div v-else>
-                                <img class="" width="100" src="../../../assets/images/logo.png" alt="">
-                            </div>
-
-
-
-                        </div>
-                    </button> -->
                 </div>
             </div>
 
@@ -735,7 +692,7 @@ onBeforeUnmount(() => {
 
 
     </section>
-    
+
     <section v-show="showIntroScreen" ref="introOverlayRef" class="fixed inset-0 z-40 flex items-center justify-center pointer-events-none">
         <div ref="introFallRef" class="absolute inset-0 z-0"></div>
         <div ref="introBurstRef" class="absolute inset-0 z-10"></div>

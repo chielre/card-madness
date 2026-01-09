@@ -15,46 +15,48 @@ const connection = useConnectionStore()
 const lobby = useLobbyStore()
 const audio = useAudioStore()
 
-const swooshFiles = import.meta.glob('@/assets/audio/effects/swoosh-*.mp3', {
-    eager: true,
-    import: 'default',
-}) as Record<string, string>
-const swooshUrls = Object.values(swooshFiles)
-let readyMap = new Map<string, boolean>()
-let readyMapInitialized = false
-
 const nameInput = ref('')
 const isLoading = ref(true)
 const errorMessage = ref('')
+
+
+let readyMap = new Map<string, boolean>()
+let readyMapInitialized = false
+
 let socket = connection.getSocketSafe()
 
 const roomId = route.params.id as string
+
 const players = computed(() => lobby.players)
 const hasJoined = computed(() => {
     if (!socket) return false
-    return !!players.value.find((p) => p.id === socket.id)
+    return !!players.value.find((p) => p.id === socket?.id)
 })
-const normalizePlayers = (playerList: { id: string; name: string; ready?: boolean }[]) =>
-    playerList.map((p) => ({ ...p, ready: !!p.ready }))
 
-const goToError = () => router.replace({ name: 'error', query: { reason: 'room_not_found' } })
+
+const normalizePlayers = (playerList: { id: string; name: string; ready?: boolean }[]) => playerList.map((p) => ({ ...p, ready: !!p.ready }))
+
+
+const roomNotFound = () => {
+    return router.replace({
+        name: 'main',
+        state: { error: 'room_not_found' }
+    })
+}
+
+
+
 
 const updateReadyMap = (players: { id: string; ready?: boolean }[]) => {
     readyMap = new Map(players.map((p) => [p.id, !!p.ready]))
     readyMapInitialized = true
 }
 
-const playReadySwoosh = () => {
-    if (!swooshUrls.length) return
-    const src = swooshUrls[Math.floor(Math.random() * swooshUrls.length)]
-    audio.playEffectOnce(src, 0.8)
-}
-
 const loadPlayers = async () => {
     try {
         socket = await connection.ensureSocket()
         const res = await lobby.fetchState(roomId)
-        if (res?.error === 'not_found') return goToError()
+        if (res?.error === 'not_found') return roomNotFound()
         updateReadyMap(lobby.players)
     } catch (e) {
         errorMessage.value = e instanceof Error ? e.message : 'Kon spelers niet laden'
@@ -67,7 +69,7 @@ const joinWithName = async () => {
     if (!nameInput.value.trim()) return
     try {
         const res = await lobby.joinLobby(roomId, nameInput.value.trim())
-        if ((res as any)?.error === 'not_found') return goToError()
+        if ((res as any)?.error === 'not_found') return roomNotFound()
     } catch (e) {
         errorMessage.value = e instanceof Error ? e.message : 'Kon niet joinen'
     }
@@ -89,7 +91,7 @@ const handlePlayersUpdated = (payload: { id: string; players: { id: string; name
                 const wasReady = readyMap.get(player.id) ?? false
                 const isReady = !!player.ready
                 if (!wasReady && isReady) {
-                    playReadySwoosh()
+                    audio.playReadySwoosh()
                 }
             })
             updateReadyMap(nextPlayers)
@@ -187,7 +189,7 @@ onBeforeUnmount(() => {
 
             <JoinScreen v-if="!hasJoined && !isLoading" :room-id="roomId" v-model:name-input="nameInput" :error-message="errorMessage" :players="players" @join="joinWithName" />
 
-            <GameRoomScreen v-if="hasJoined && !isLoading" :players="players" />
+            <GameRoomScreen v-else-if="hasJoined && !isLoading" :players="players" />
         </div>
     </div>
 </template>

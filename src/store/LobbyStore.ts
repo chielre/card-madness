@@ -41,17 +41,15 @@ export const useLobbyStore = defineStore('lobby', {
             this.phase = phase
         },
 
-        async createLobby(name: string) {
+        async createLobby(hostName: string, language?: string) {
             const conn = useConnectionStore()
+            const { lobbyId, selectedPacks } = await conn.emitWithAck<{ lobbyId: string; selectedPacks: string[] }>('room:create', { hostName, language })
 
-            const { lobbyId, selectedPacks, host } = await conn.emitWithAck<{ lobbyId: string; selectedPacks: string[]; host: string }>('room:create', { name })
             this.lobbyId = lobbyId
             this.selectedPacks = selectedPacks
-            this.host = host
-
         },
 
-        async joinLobby(code: string, name: string) {
+        async joinLobby(code: string, name: string, language?: string) {
 
             const conn = useConnectionStore()
             const res = await conn.emitWithAck<{
@@ -62,7 +60,7 @@ export const useLobbyStore = defineStore('lobby', {
                 host?: string
             }>(
                 'room:join',
-                { roomId: code, name }
+                { roomId: code, name, language }
             )
             if (res.error) return res
 

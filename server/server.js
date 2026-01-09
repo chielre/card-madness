@@ -30,13 +30,21 @@ const createDevelopmentLobby = () => {
         lobbyId: TEST_LOBBY_ID,
         host: 'test-host',
         players: [
-            { id: 'test-host', name: 'DevHost', ready: false },
-            { id: 'test-host2', name: 'Player1', ready: true },
-            { id: 'test-host3', name: 'Player2', ready: true },
-            { id: 'test-host4', name: 'Player3', ready: false }
+            { id: 'test-host', name: 'DevHost', ready: false, language: 'nl' },
+            { id: 'test-host2', name: 'Player1', ready: true, language: 'nl' },
+            { id: 'test-host3', name: 'Player2', ready: true, language: 'nl' },
+            { id: 'test-host4', name: 'Player3', ready: false, language: 'nl' }
         ],
         phase: 'lobby',
         selectedPacks: [],
+        card_selector: {
+            languageByPlayerId: {
+                'test-host': 'nl',
+                'test-host2': 'nl',
+                'test-host3': 'nl',
+                'test-host4': 'nl',
+            },
+        },
     })
 }
 
@@ -49,7 +57,7 @@ io.on('connection', (socket) => {
 })
 
 httpServer.listen(PORT, () => {
-    console.log('')
+    return;
 })
 
 startConsole({ io, games, phaseTimers, intervalMs: 500 });

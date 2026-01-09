@@ -4,8 +4,8 @@ import { clearPhaseTimer, schedulePhaseTimer } from '../utils/phaseTimers.js'
 import { PHASE_DEFAULT_DURATIONS } from '../config/phaseDurations.js'
 
 export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
-    socket.on('room:create', ({ name }, cb) => {
-        const game = createGame({ games, hostId: socket.id, name })
+    socket.on('room:create', ({ hostName, language }, cb) => {
+        const game = createGame({ games, hostId: socket.id, hostName: hostName, language: language })
 
         socket.join(game.lobbyId)
         trackJoin(socketRooms, socket.id, game.lobbyId)
@@ -13,18 +13,18 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
         cb?.({ lobbyId: game.lobbyId, phase: game.phase, host: game.host, selectedPacks: game.selectedPacks })
     })
 
-    socket.on('room:join', ({ roomId, name }, cb) => {
+    socket.on('room:join', ({ roomId, name, language }, cb) => {
         const game = joinGame({
             games,
             roomId,
-            player: { id: socket.id, name, ready: false },
+            player: { id: socket.id, name, ready: false, language },
         })
         if (!game) return cb?.({ error: 'not_found' })
 
         socket.join(roomId)
         trackJoin(socketRooms, socket.id, roomId)
 
-        socket.to(roomId).emit('room:player-joined', { id: socket.id, name, ready: false })
+        socket.to(roomId).emit('room:player-joined', { id: socket.id, name, ready: false, language })
         cb?.({ lobbyId: roomId, phase: game.phase, host: game.host, players: game.players, selectedPacks: game.selectedPacks ?? [] })
     })
 

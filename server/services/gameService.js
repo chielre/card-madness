@@ -1,13 +1,22 @@
 import { nanoid } from 'nanoid'
+import { getRandomCard } from './cardService.js'
 
-export const createGame = ({ games, hostId, name }) => {
+const normalizeName = (name) => (name ?? '').toString().trim()
+const normalizeLanguage = (language) => (language ?? '').toString().trim() || 'nl'
+
+export const createGame = ({ games, hostId, hostName, language }) => {
+    const normalizedHostName = normalizeName(hostName)
+    const hostLanguage = normalizeLanguage(language)
     const lobbyId = nanoid(6)
     const game = {
         lobbyId,
         host: hostId,
-        players: [{ id: hostId, name, ready: false }],
+        players: [{ id: hostId, name: normalizedHostName, ready: false, language: hostLanguage }],
         phase: 'lobby',
         selectedPacks: [],
+        card_selector: {
+            languageByPlayerId: { [hostId]: hostLanguage },
+        },
     }
     games.set(lobbyId, game)
     return game
@@ -16,7 +25,16 @@ export const createGame = ({ games, hostId, name }) => {
 export const joinGame = ({ games, roomId, player }) => {
     const game = games.get(roomId)
     if (!game) return null
-    game.players.push(player)
+    const nextPlayer = {
+        ...player,
+        name: normalizeName(player?.name),
+        language: normalizeLanguage(player?.language),
+    }
+    game.players.push(nextPlayer)
+    if (!game.card_selector) {
+        game.card_selector = { languageByPlayerId: {} }
+    }
+    game.card_selector.languageByPlayerId[nextPlayer.id] = nextPlayer.language
     games.set(roomId, game)
     return game
 }
@@ -51,6 +69,23 @@ export const setReady = ({ games, roomId, socketId, ready }) => {
     player.ready = !!ready
     games.set(roomId, game)
     return { game, player }
+}
+
+export const drawRandomCard = ({ games, roomId, playerId, packId, type }) => {
+    const game = games.get(roomId)
+    if (!game) return { error: 'not_found' }
+    const player = game.players.find((p) => p.id === playerId)
+    if (!player) return { error: 'player_not_found' }
+
+    const language =
+        game.card_selector?.languageByPlayerId?.[playerId] ??
+        player.language ??
+        'nl'
+
+    const card = getRandomCard({ language, packId, type })
+    if (!card) return { error: 'no_cards', language, packId, type }
+
+    return { card }
 }
 
 export const updatePacks = ({ games, roomId, packs }) => {
