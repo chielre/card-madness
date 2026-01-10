@@ -22,12 +22,19 @@ let introGameHowl: Howl | null = null
 let swooshHowl: Howl | null = null
 
 const effectHowls: Record<string, Howl> = {}
+
 const swooshFiles = import.meta.glob('@/assets/audio/effects/swoosh-*.mp3', {
   eager: true,
   import: 'default',
 }) as Record<string, string>
 
+const popFiles = import.meta.glob('@/assets/audio/effects/pop-*.mp3', {
+  eager: true,
+  import: 'default',
+}) as Record<string, string>
+
 const swooshUrls = Object.values(swooshFiles)
+const popUrls = Object.values(popFiles)
 
 function pickRandom<T>(arr: T[]) {
   return arr[Math.floor(Math.random() * arr.length)]
@@ -35,8 +42,8 @@ function pickRandom<T>(arr: T[]) {
 
 const customHowls: Record<string, Howl> = {}
 let oneShotHowl: Howl | null = null
-
 let oneShotId: string | null = null
+
 const FADE_OUT_MS = 400
 
 const loadPromises = new WeakMap<Howl, Promise<void>>()
@@ -88,7 +95,6 @@ export const useAudioStore = defineStore('audio', {
     current: null as Track,
   }),
   actions: {
-    // -------- ensure (maak/howl cache) --------
     ensureMain() {
       if (!mainHowl) mainHowl = new Howl({ src: [themeMusic], loop: true, volume: 0.5 })
       return mainHowl
@@ -233,6 +239,13 @@ export const useAudioStore = defineStore('audio', {
 
       await this.readyEffect(`swoosh:${src}`, src)
       this.ensureEffect(`swoosh:${src}`, src).play()
+    },
+
+    async playPop() {
+      if (!popUrls.length) return
+      const src = pickRandom(popUrls)
+      await this.readyEffect(`pop:${src}`, src)
+      this.ensureEffect(`pop:${src}`, src).play()
     },
 
     async playCustomOnce(key: string, src: string) {
