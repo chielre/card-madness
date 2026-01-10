@@ -134,6 +134,14 @@ export const useLobbyStore = defineStore('lobby', {
             return this.players.find((p) => p.id === socketId) ?? null
         },
 
+        getCurrentPlayerIsHost(): boolean {
+            const conn = useConnectionStore()
+            const socketId = conn.getSocketSafe()?.id
+            if (!socketId) return false
+
+            return socketId === this.host
+        },
+
         getCurrentPlayerOrFail() {
             if (!this.getCurrentPlayer()) {
                 throw new Error('Current player is not set')
