@@ -1,5 +1,4 @@
 <script setup lang="tsx">
-import { computed, ref, watch } from 'vue'
 import InformationSymbol from 'vue-material-design-icons/InformationSymbol.vue';
 
 const props = defineProps<{

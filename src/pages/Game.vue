@@ -8,9 +8,7 @@ import { useAudioStore } from '@/store/AudioStore'
 // Screens (optioneel te gebruiken)
 import JoinScreen from '@/components/screens/game/Join.vue'
 import GameRoomScreen from '@/components/screens/game/GameRoom.vue'
-import IntroScreen from '@/components/screens/game/Intro.vue'
-import LobbyScreen from '@/components/screens/game/Lobby.vue'
-import BoardScreen from '@/components/screens/game/Board.vue'
+
 
 const route = useRoute()
 const router = useRouter()
@@ -36,9 +34,7 @@ const hasJoined = computed(() => {
     return !!players.value.find((p) => p.id === socket?.id)
 })
 
-
 const normalizePlayers = (playerList: { id: string; name: string; ready?: boolean }[]) => playerList.map((p) => ({ ...p, ready: !!p.ready }))
-
 
 const roomNotFound = () => {
     return router.replace({
@@ -46,9 +42,6 @@ const roomNotFound = () => {
         state: { error: 'room_not_found' }
     })
 }
-
-
-
 
 const updateReadyMap = (players: { id: string; ready?: boolean }[]) => {
     readyMap = new Map(players.map((p) => [p.id, !!p.ready]))
@@ -192,14 +185,9 @@ onBeforeUnmount(() => {
 
             <JoinScreen v-if="!hasJoined && !isLoading" :room-id="roomId" v-model:name-input="nameInput" :error-message="errorMessage" :players="players" @join="joinWithName" />
 
-            <!-- <template v-else-if="hasJoined && !isLoading">
-                <LobbyScreen />
-                <IntroScreen />
-                <BoardScreen />
-            </template> -->
 
 
-            <GameRoomScreen v-else-if="hasJoined && !isLoading" :players="players" />
+            <GameRoomScreen v-else-if="hasJoined && !isLoading" />
         </div>
     </div>
 </template>
