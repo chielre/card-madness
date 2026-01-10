@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, nextTick, onBeforeUnmount } from 'vue'
+import { computed, ref, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
 import gsap from 'gsap'
 import { useLobbyStore } from '@/store/LobbyStore'
 
@@ -64,6 +64,9 @@ watch(
     }
 )
 
+onMounted(() => {
+    console.log(lobby.phase)
+})
 
 </script>s
 

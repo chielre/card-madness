@@ -1,7 +1,30 @@
 import { defineStore } from 'pinia'
 import { useConnectionStore } from './ConnectionStore'
+import { resolveWhiteCards } from "@/utils/cards"
 
-type Player = { id: string; name: string; ready?: boolean }
+
+type WhiteCard = {
+    pack: string,
+    card_id: number,
+    name?: string,
+    text?: string,
+}
+
+type Player = {
+    id: string
+    name: string,
+    white_cards: WhiteCard[],
+    ready?: boolean
+}
+
+type Game = {
+    lobbyId: string,
+    host: string,
+    players: Player[],
+    phase: string,
+    selectedPacks: [],
+    error?: string
+}
 
 const normalizePlayer = (player: Player) => ({
     ...player,
@@ -11,7 +34,7 @@ const normalizePlayer = (player: Player) => ({
 export const useLobbyStore = defineStore('lobby', {
     state: () => ({
         lobbyId: '',
-        players: [] as { id: string; name: string; ready: boolean }[],
+        players: [] as Player[],
         selectedPacks: [] as string[],
         host: '' as string,
         phase: 'lobby' as string,
@@ -52,35 +75,22 @@ export const useLobbyStore = defineStore('lobby', {
         async joinLobby(code: string, name: string, language?: string) {
 
             const conn = useConnectionStore()
-            const res = await conn.emitWithAck<{
-                lobbyId: string
-                players?: Player[]
-                error?: string
-                selectedPacks?: string[]
-                host?: string
-            }>(
-                'room:join',
-                { roomId: code, name, language }
-            )
+            const res = await conn.emitWithAck<Game>('room:join', { roomId: code, name, language })
             if (res.error) return res
 
             this.lobbyId = res.lobbyId
             this.players = (res.players ?? []).map(normalizePlayer)
             this.selectedPacks = res.selectedPacks ?? []
             this.host = res.host ?? ''
+            this.phase = res.phase ?? ''
+
 
             return res
         },
 
         async fetchState(roomId: string) {
             const conn = useConnectionStore()
-            const res = await conn.emitWithAck<{
-                lobbyId: string
-                players?: Player[]
-                error?: string
-                selectedPacks?: string[]
-                host?: string
-            }>('room:state', { roomId })
+            const res = await conn.emitWithAck<Game>('room:state', { roomId })
 
             if (res.error) return res
 
@@ -88,6 +98,8 @@ export const useLobbyStore = defineStore('lobby', {
             this.players = (res.players ?? []).map(normalizePlayer)
             this.selectedPacks = res.selectedPacks ?? []
             this.host = res.host ?? ''
+            this.phase = res.phase ?? 'lobby'
+
             return res
         },
 
@@ -132,6 +144,13 @@ export const useLobbyStore = defineStore('lobby', {
             if (!socketId) return null
 
             return this.players.find((p) => p.id === socketId) ?? null
+        },
+
+        getCurrentPlayerCards(): WhiteCard[] {
+            const player = this.getCurrentPlayer();
+            if (!player) return []
+
+            return resolveWhiteCards(player.white_cards ?? [])
         },
 
         getCurrentPlayerIsHost(): boolean {

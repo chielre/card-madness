@@ -30,19 +30,88 @@ const createDevelopmentLobby = () => {
         lobbyId: TEST_LOBBY_ID,
         host: 'test-host',
         players: [
-            { id: 'test-host', name: 'DevHost', ready: false, language: 'nl' },
-            { id: 'test-host2', name: 'Player1', ready: true, language: 'nl' },
-            { id: 'test-host3', name: 'Player2', ready: true, language: 'nl' },
-            { id: 'test-host4', name: 'Player3', ready: false, language: 'nl' }
+            {
+                id: 'test-host',
+                name: 'DevHost',
+                ready: false,
+                language: 'nl',
+                white_cards: [
+                    {
+                        pack: 'base',
+                        card_id: 2,
+                        name: 'Chiel'
+                    },
+                    {
+                        pack: 'base',
+                        card_id: 1,
+                        name: 'Chiel'
+                    },
+                    {
+                        pack: 'base',
+                        card_id: 3,
+                        name: 'Chiel'
+                    }
+                ]
+            },
+            {
+                id: 'test-host2',
+                name: 'DevHost',
+                ready: false,
+                language: 'nl',
+                white_cards: [
+                    {
+                        pack: 'base',
+                        card_id: 6,
+                        name: 'Chiel'
+                    },
+                    {
+                        pack: 'base',
+                        card_id: 23,
+                        name: 'Chiel'
+                    },
+                    {
+                        pack: 'base',
+                        card_id: 14,
+                        name: 'Chiel'
+                    }
+                ]
+            },
         ],
-        phase: 'lobby',
+        phase: 'choosing',
+        currentRound: 0,
         selectedPacks: [],
+        rounds: {
+            1: {
+                cardSelector: {
+                    player: "test-host",
+                    selectedCard: {}
+                },
+                blackCard: {
+                    pack: 'base',
+                    card_id: 1,
+                    name: 'Chiel'
+                },
+                playerSelectedCards: [],
+            },
+            2: {
+                cardSelector: {
+                    player: null,
+                    selectedCard: {}
+                },
+                blackCard: {
+                    pack: 'base',
+                    card_id: 1,
+                    name: 'Chiel'
+                },
+                playerSelectedCards: [],
+            }
+
+
+        },
         card_selector: {
             languageByPlayerId: {
                 'test-host': 'nl',
                 'test-host2': 'nl',
-                'test-host3': 'nl',
-                'test-host4': 'nl',
             },
         },
     })

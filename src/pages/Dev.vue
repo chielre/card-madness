@@ -6,7 +6,7 @@ import CountdownTimer from "../components/CountdownTimer.vue"
 import BaseButton from "../components/ui/BaseButton.vue"
 import { useAudioStore } from "@/store/AudioStore"
 import pop1 from "@/assets/audio/effects/pop-1.mp3"
-import pop2 from "@/assets/audio/effects/pop-3.mp3"
+import pop2 from "@/assets/audio/effects/pop-2.mp3"
 
 const timerRef = ref<InstanceType<typeof CountdownTimer> | null>(null)
 const handRef = ref<HTMLElement | null>(null)
@@ -311,6 +311,9 @@ onBeforeUnmount(() => {
             </div>
             <div class="absolute bottom-0 left-0 right-0 flex justify-center ">
                 <div ref="handRef" class="flex gap-2 z-10 relative">
+
+                    <div v-for="card in "></div>
+
                     <div class="madness-card card-white card-sm draggable-card"> Een politicus met een verstoord wereldbeeld </div>
                     <div class="madness-card card-white card-sm draggable-card"> kapotte wifi </div>
                     <div class="madness-card card-white card-sm draggable-card"> mijn hoge zelfbeeld </div>
