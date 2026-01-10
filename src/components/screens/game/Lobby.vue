@@ -56,7 +56,7 @@ const syncPackSelection = () => {
 
 const startGame = async () => {
     if (!lobby.getCurrentPlayerIsHost() && lobby.lobbyId != 'TEST01') return
-    await connection.emitWithAck('room:phase-set', { roomId: lobby.lobbyId, phase: 'starting' })
+    await connection.emitWithAck('room:phase-set', { lobbyId: lobby.lobbyId, phase: 'starting' })
 }
 
 const openPackInfo = (packId: string) => {

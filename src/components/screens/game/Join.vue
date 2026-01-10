@@ -3,7 +3,7 @@ import { useLobbyStore } from '@/store/LobbyStore'
 import BaseButton from '@/components/ui/BaseButton.vue'
 
 const props = defineProps<{
-    roomId: string
+    lobbyId: string
     nameInput: string
     errorMessage: string
     players: { id: string; name: string }[]

@@ -1,7 +1,7 @@
 import logUpdate from 'log-update'
 import chalk from 'chalk'
 
-export const startConsole = ({ io, games, phaseTimers, intervalMs = 500 }) => {
+export const startConsole = ({ io, games, phaseTimers, roundTimers, intervalMs = 500 }) => {
     const startedAt = Date.now()
 
     const fmtUptime = (ms) => {
@@ -26,19 +26,28 @@ export const startConsole = ({ io, games, phaseTimers, intervalMs = 500 }) => {
         ].join(chalk.bold.gray(" | "))
     }
 
-    const phaseTimerLine = (roomId, entry) => {
+    const phaseTimerLine = (lobbyId, entry) => {
         const remainingMs = entry?.expiresAt ? Math.max(0, entry.expiresAt - Date.now()) : null
         const remaining = remainingMs !== null ? `${Math.ceil(remainingMs / 1000)}s` : 'n/a'
         return [
-            chalk.bold(roomId),
+            chalk.bold(lobbyId),
             `phase:${entry?.phase ?? '?'}`,
             `remaining:${remaining}`,
         ].join(chalk.bold.gray(" | "))
     }
 
+    const roundTimerList = (lobbyId, entry) => {
+        const remainingMs = entry?.expiresAt ? Math.max(0, entry.expiresAt - Date.now()) : null
+        const remaining = remainingMs !== null ? `${Math.ceil(remainingMs / 1000)}s` : 'n/a'
+        return [
+            chalk.bold(lobbyId),
+            `round:${entry?.round ?? '?'}`,
+            `remaining:${remaining}`,
+        ].join(chalk.bold.gray(" | "))
+    }
 
     const updateConsole = () => {
-    
+
 
 
         const sockets = io.of("/").sockets.size
@@ -58,7 +67,14 @@ export const startConsole = ({ io, games, phaseTimers, intervalMs = 500 }) => {
             timers === 0
                 ? chalk.gray("  (geen timers)")
                 : [...phaseTimers.entries()]
-                    .map(([roomId, entry]) => "  " + phaseTimerLine(roomId, entry))
+                    .map(([lobbyId, entry]) => "  " + phaseTimerLine(lobbyId, entry))
+                    .join("\n")
+
+        const roundTimerList =
+            timers === 0
+                ? chalk.gray("  (geen timers)")
+                : [...roundTimers.entries()]
+                    .map(([lobbyId, entry]) => "  " + phaseTimerLine(lobbyId, entry))
                     .join("\n")
 
         logUpdate([
@@ -70,7 +86,9 @@ export const startConsole = ({ io, games, phaseTimers, intervalMs = 500 }) => {
             `${chalk.bold("Lobbies:")}`,
             `${lobbyList}`,
             `${chalk.bold("Phase timers:")}`,
-            `${phaseTimersList}`
+            `${phaseTimersList}`,
+                `${chalk.bold("Round timers:")}`,
+            `${roundTimerList}`
         ].join("\n"))
     }
 

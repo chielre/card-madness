@@ -1,5 +1,5 @@
-export const emitPlayersUpdated = ({ io, roomId, game }) => {
-  io.to(roomId).emit('room:players-changed', {
+export const emitPlayersUpdated = ({ io, lobbyId, game }) => {
+  io.to(lobbyId).emit('room:players-changed', {
     players: game.players,
   })
 }

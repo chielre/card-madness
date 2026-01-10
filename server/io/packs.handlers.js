@@ -1,9 +1,9 @@
 import { updatePacks } from '../services/gameService.js'
 
 export const registerPacksHandlers = ({ socket, games }) => {
-    socket.on('packs:update', ({ roomId, packs }) => {
-        const game = updatePacks({ games, roomId, packs })
+    socket.on('packs:update', ({ lobbyId, packs }) => {
+        const game = updatePacks({ games, lobbyId, packs })
         if (!game) return
-        socket.to(roomId).emit('packs:updated', { packs: game.selectedPacks })
+        socket.to(lobbyId).emit('packs:updated', { packs: game.selectedPacks })
     })
 }

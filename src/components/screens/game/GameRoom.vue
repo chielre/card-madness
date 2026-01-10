@@ -11,7 +11,7 @@ const lobby = useLobbyStore()
 
 const showLobbyScreen = computed(() => ['lobby', 'starting', 'intro'].includes(lobby.phase))
 const showIntroScreen = computed(() => lobby.phase === 'intro')
-const showBoardScreen = computed(() => ['intro', 'choosing', 'results'].includes(lobby.phase))
+const showBoardScreen = computed(() => ['intro', 'board'].includes(lobby.phase))
 
 const LobbyScreenRef = ref<InstanceType<typeof LobbyScreen> | null>(null)
 const IntroScreenRef = ref<InstanceType<typeof IntroScreen> | null>(null)
@@ -65,7 +65,6 @@ watch(
 )
 
 onMounted(() => {
-    console.log(lobby.phase)
 })
 
 </script>s

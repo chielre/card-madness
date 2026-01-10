@@ -5,7 +5,7 @@ import chalk from 'chalk';
 import dotenv from "dotenv"
 
 // server files
-import { games, socketRooms, phaseTimers } from './state/store.js'
+import { games, socketRooms, phaseTimers, roundTimers } from './state/store.js'
 import { registerHandlers } from './io/registerHandlers.js'
 import { startConsole } from './console.js'
 
@@ -89,7 +89,7 @@ const createDevelopmentLobby = () => {
                 ]
             },
         ],
-        phase: 'choosing',
+        phase: 'board',
         currentRound: 0,
         selectedPacks: [],
         rounds: {
@@ -120,12 +120,7 @@ const createDevelopmentLobby = () => {
 
 
         },
-        card_selector: {
-            languageByPlayerId: {
-                'test-host': 'nl',
-                'test-host2': 'nl',
-            },
-        },
+
     })
 }
 
@@ -141,4 +136,4 @@ httpServer.listen(PORT, () => {
     return;
 })
 
-startConsole({ io, games, phaseTimers, intervalMs: 500 });
+startConsole({ io, games, phaseTimers, roundTimers, intervalMs: 500 });

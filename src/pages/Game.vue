@@ -26,7 +26,7 @@ let readyMapInitialized = false
 
 let socket = connection.getSocketSafe()
 
-const roomId = route.params.id as string
+const lobbyId = route.params.id as string
 
 const players = computed(() => lobby.players)
 const hasJoined = computed(() => {
@@ -51,7 +51,7 @@ const updateReadyMap = (players: { id: string; ready?: boolean }[]) => {
 const loadPlayers = async () => {
     try {
         socket = await connection.ensureSocket()
-        const res = await lobby.fetchState(roomId)
+        const res = await lobby.fetchState(lobbyId)
         if (res?.error === 'not_found') return roomNotFound()
         updateReadyMap(lobby.players)
     } catch (e) {
@@ -64,7 +64,7 @@ const loadPlayers = async () => {
 const joinWithName = async () => {
     if (!nameInput.value.trim()) return
     try {
-        const res = await lobby.joinLobby(roomId, nameInput.value.trim())
+        const res = await lobby.joinLobby(lobbyId, nameInput.value.trim())
         if ((res as any)?.error === 'not_found') return roomNotFound()
     } catch (e) {
         errorMessage.value = e instanceof Error ? e.message : 'Kon niet joinen'
@@ -147,6 +147,26 @@ const handleGamePhaseTimeout = (payload: { phase: string }) => {
 }
 
 
+/*-----------------------------------
+Board socket events
+*/
+
+const handleBoardRoundUpdated = (payload: { round: any }) => {
+    lobby.setCurrentRound(payload.round)
+}
+
+const handleBoardRoundStarted = (payload: { round: any }) => {
+    lobby.setCurrentRound(payload.round)
+}
+
+
+/*-----------------------------------
+Player socket updates
+*/
+const handlePlayerCardsUpdated = (payload: { cards: any }) => {
+    lobby.setCurrentPlayerCards(payload.cards)
+}
+
 
 onMounted(async () => {
     await loadPlayers()
@@ -154,25 +174,38 @@ onMounted(async () => {
     socket.on('room:player-joined', handlePlayerJoined)
     socket.on('room:player-left', handlePlayerLeft)
     socket.on('room:player-ready', handlePlayerReady)
+    socket.on('room:player-cards-updated', handlePlayerCardsUpdated)
+
     socket.on('room:players-changed', handlePlayersUpdated)
     socket.on('room:phase-changed', handleGamePhaseChange)
     socket.on('room:phase-timeout', handleGamePhaseTimeout)
 
     socket.on('packs:updated', handlePacksUpdated)
+
+    socket.on('board:round-updated', handleBoardRoundUpdated)
+    socket.on('board:round-started', handleBoardRoundStarted)
+
+
 })
 
 onBeforeUnmount(() => {
     // laat de server weten dat we de lobby verlaten als we weg navigeren
-    lobby.leaveLobby(roomId)
+    lobby.leaveLobby(lobbyId)
 
     if (!socket) return
     socket.off('room:player-joined', handlePlayerJoined)
     socket.off('room:player-left', handlePlayerLeft)
     socket.off('room:player-ready', handlePlayerReady)
+    socket.off('player:player-cards-updated', handlePlayerCardsUpdated)
+
     socket.off('room:players-changed', handlePlayersUpdated)
     socket.off('room:phase-changed', handleGamePhaseChange)
     socket.off('room:phase-timeout', handleGamePhaseTimeout)
+
     socket.off('packs:updated', handlePacksUpdated)
+
+    socket.off('board:round-updated', handleBoardRoundUpdated)
+    socket.off('board:round-started', handleBoardRoundStarted)
 })
 </script>
 
@@ -183,9 +216,7 @@ onBeforeUnmount(() => {
             <div class="bg-noise"></div>
             <div class="bg-grid"></div>
 
-            <JoinScreen v-if="!hasJoined && !isLoading" :room-id="roomId" v-model:name-input="nameInput" :error-message="errorMessage" :players="players" @join="joinWithName" />
-
-
+            <JoinScreen v-if="!hasJoined && !isLoading" :lobby-id="lobbyId" v-model:name-input="nameInput" :error-message="errorMessage" :players="players" @join="joinWithName" />
 
             <GameRoomScreen v-else-if="hasJoined && !isLoading" />
         </div>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue"
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { Sortable, Plugins } from "@shopify/draggable"
 
 import { resolveWhiteCards } from "@/utils/cards"
@@ -18,6 +18,9 @@ const timerRef = ref<InstanceType<typeof CountdownTimer> | null>(null)
 const handRef = ref<HTMLElement | null>(null)
 const playRef = ref<HTMLElement | null>(null)
 const sortableRef = ref<Sortable | null>(null)
+
+const BlackCardRef = ref<HTMLElement | null>(null)
+
 
 
 function syncPlaySlotState() {
@@ -159,6 +162,23 @@ const runIntroAnimation = () => {
 
 }
 
+watch(
+    () => lobby.currentRound,
+    (round) => {
+        if (!round) return
+        console.log(`Round updated ${round}`)
+    }
+)
+
+watch(
+    () => lobby.players,
+    (players) => {
+        if (!players) return
+        console.log(`players updated ${players}`)
+    },
+    { deep: true }
+)
+
 
 onMounted(() => {
 
@@ -236,7 +256,6 @@ onMounted(() => {
 
     sortableRef.value = sortable
     syncPlaySlotState()
-    timerRef.value?.start(50)
     // timerRef.value?.start(50)
 })
 
@@ -263,7 +282,7 @@ defineExpose({ runIntroAnimation })
             <div class="absolute top-0 w-screen left-[50%] translate-x-[-50%] flex justify-between ">
                 <div class="p-4 flex-1 flex items-center"> <img class="logo" width="150" src="../../../assets/images/logo.png" alt=""> </div>
                 <div class="bg-[#2b0246] px-16 py-4 rounded-b-4xl border-2 border-black border-t-0">
-                    <CountdownTimer ref="timerRef" :initial-seconds="34" :auto-start="false" />
+                    <CountdownTimer ref="timerRef" :initial-seconds="240" :auto-start="false" />
                 </div>
                 <div class="p-4 flex-1 flex items-center justify-end gap-3">
                     <BaseButton size="md" icon="Music"> </BaseButton>
@@ -291,7 +310,7 @@ defineExpose({ runIntroAnimation })
 
             <div class="flex items-center">
                 <div class="pr-10 bg-white border-2 border-b-5 rounded-xl border-black p-6 text-black">
-                    <div class="madness-card card-black card-anim "> Can ________ hurry up? It takes so long! </div>
+                    <div ref="BlackCardRef" class="madness-card card-black card-anim "> Can ________ hurry up? It takes so long! </div>
                 </div>
                 <div class="-ml-6 bg-[#2b0246]  grid grid-cols-5 gap-8 w-3xl border-4 backdrop-blur-sm rounded-xl border-black p-6 transition-all">
                     <div class="play-zone ">

@@ -1,82 +1,88 @@
-import { createGame, joinGame, leaveGame, setPhase } from '../services/gameService.js'
+import { createGame, joinGame, leaveGame } from '../services/gameService.js'
+import { transitionPhase } from '../services/phaseService.js'
 import { trackJoin, trackLeave } from '../services/socketRoomService.js'
 import { clearPhaseTimer, schedulePhaseTimer } from '../utils/phaseTimers.js'
 import { PHASE_DEFAULT_DURATIONS } from '../config/phaseDurations.js'
 
 export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
     socket.on('room:create', ({ hostName, language }, cb) => {
-        const game = createGame({ games, hostId: socket.id, hostName: hostName, language: language })
+        const game = createGame({
+            games,
+            hostId: socket.id,
+            hostName: hostName,
+            language: language
+        })
 
         socket.join(game.lobbyId)
         trackJoin(socketRooms, socket.id, game.lobbyId)
 
-        cb?.({ lobbyId: game.lobbyId, phase: game.phase, host: game.host, selectedPacks: game.selectedPacks })
+        cb?.({
+            lobbyId: game.lobbyId,
+            phase: game.phase,
+            host: game.host,
+            selectedPacks: game.selectedPacks
+        })
     })
 
-    socket.on('room:join', ({ roomId, name, language }, cb) => {
+    socket.on('room:join', ({ lobbyId, name, language }, cb) => {
         const game = joinGame({
             games,
-            roomId,
+            lobbyId,
             player: { id: socket.id, name, ready: false, language },
         })
         if (!game) return cb?.({ error: 'not_found' })
 
-        socket.join(roomId)
-        trackJoin(socketRooms, socket.id, roomId)
+        socket.join(lobbyId)
+        trackJoin(socketRooms, socket.id, lobbyId)
 
-        socket.to(roomId).emit('room:player-joined', { id: socket.id, name, ready: false, language })
-        cb?.({ lobbyId: roomId, phase: game.phase, host: game.host, players: game.players, selectedPacks: game.selectedPacks ?? [] })
+        socket.to(lobbyId).emit('room:player-joined', { id: socket.id, name, ready: false, language })
+        cb?.({ lobbyId: lobbyId, phase: game.phase, host: game.host, players: game.players, selectedPacks: game.selectedPacks ?? [] })
     })
 
-    socket.on('room:leave', ({ roomId }, cb) => {
-        const res = leaveGame({ games, roomId, socketId: socket.id })
+    socket.on('room:leave', ({ lobbyId }, cb) => {
+        const res = leaveGame({ games, lobbyId, socketId: socket.id })
         if (!res) return cb?.({ error: 'not_found' })
 
-        socket.leave(roomId)
-        trackLeave(socketRooms, socket.id, roomId)
+        socket.leave(lobbyId)
+        trackLeave(socketRooms, socket.id, lobbyId)
 
-        socket.to(roomId).emit('room:player-left', { id: socket.id, players: res.game?.players ?? [] })
-        if (res.hostChangedTo) io.to(roomId).emit('room:host-changed', { hostId: res.hostChangedTo })
+        socket.to(lobbyId).emit('room:player-left', { id: socket.id, players: res.game?.players ?? [] })
+        if (res.hostChangedTo) io.to(lobbyId).emit('room:host-changed', { hostId: res.hostChangedTo })
 
         cb?.({ ok: true })
     })
 
-    socket.on('room:state', ({ roomId }, cb) => {
-        const game = games.get(roomId)
+    socket.on('room:state', ({ lobbyId }, cb) => {
+        const game = games.get(lobbyId)
         if (!game) return cb?.({ error: 'not_found' })
-        cb?.({ lobbyId: roomId, phase: game.phase, host: game.host, players: game.players, selectedPacks: game.selectedPacks ?? [] })
+        cb?.({ lobbyId: lobbyId, phase: game.phase, host: game.host, players: game.players, selectedPacks: game.selectedPacks ?? [] })
     })
 
-    socket.on('room:phase-set', ({ roomId, phase, durationMs, nextPhase }, cb) => {
-        const game = games.get(roomId)
+    socket.on('room:phase-set', ({ lobbyId, phase, durationMs, nextPhase }, cb) => {
+        const game = games.get(lobbyId)
         if (!game) return cb?.({ error: 'not_found' })
+
         if (game.host !== socket.id) return cb?.({ error: 'not_host' })
 
-        const res = setPhase({ games, roomId, to: phase })
+        const res = transitionPhase({ games, io, lobbyId, to: phase })
         if (res.error) return cb?.(res)
 
-        clearPhaseTimer(roomId)
-
-        // inform everyone of the new phase
-        io.to(roomId).emit('room:phase-changed', { phase: res.game.phase })
+        clearPhaseTimer(lobbyId)
 
         // schedule a timeout notification using provided duration or defaults
         schedulePhaseTimer({
             io,
-            roomId,
+            lobbyId,
             phase: res.game.phase,
             durationMs,
             defaultDurations: PHASE_DEFAULT_DURATIONS,
             onTimeout: () => {
                 if (!nextPhase) return
-                const phaseRes = setPhase({ games, roomId, to: nextPhase })
-                if (!phaseRes.error) {
-                    io.to(roomId).emit('room:phase-changed', { phase: phaseRes.game.phase })
-                }
+                transitionPhase({ games, io, lobbyId, to: nextPhase })
             },
         })
 
-        cb?.({ lobbyId: roomId, phase: game.phase, host: game.host, players: game.players, selectedPacks: game.selectedPacks ?? [] })
+        cb?.({ lobbyId: lobbyId, phase: game.phase, host: game.host, players: game.players, selectedPacks: game.selectedPacks ?? [] })
 
     })
 

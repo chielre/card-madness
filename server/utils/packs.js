@@ -1,20 +1,24 @@
 import fs from "node:fs"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 
-const PACKS_DIR = path.join(process.cwd(), "assets", "packs")
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+// ⬆⬆⬆ van /server/utils → /server → / → project root → /src/assets/...
+const PROJECT_ROOT = path.resolve(__dirname, "../..")
+
+const PACKS_DIR = path.join(PROJECT_ROOT, "src", "assets", "packs")
 const PACKS_META_FILE = path.join(PACKS_DIR, "packs.json")
 
 let _packs = null
 
 function loadPacks() {
     if (_packs) return _packs
-
     const raw = fs.readFileSync(PACKS_META_FILE, "utf8")
     _packs = JSON.parse(raw)
-
     return _packs
 }
-
 export const getPacks = () => loadPacks()
 
 export const getPackById = (id) => {

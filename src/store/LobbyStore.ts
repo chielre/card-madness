@@ -39,6 +39,7 @@ export const useLobbyStore = defineStore('lobby', {
         host: '' as string,
         phase: 'lobby' as string,
         phaseTimeoutTick: 0,
+        currentRound: 0,
     }),
 
     actions: {
@@ -75,7 +76,7 @@ export const useLobbyStore = defineStore('lobby', {
         async joinLobby(code: string, name: string, language?: string) {
 
             const conn = useConnectionStore()
-            const res = await conn.emitWithAck<Game>('room:join', { roomId: code, name, language })
+            const res = await conn.emitWithAck<Game>('room:join', { lobbyId: code, name, language })
             if (res.error) return res
 
             this.lobbyId = res.lobbyId
@@ -88,9 +89,9 @@ export const useLobbyStore = defineStore('lobby', {
             return res
         },
 
-        async fetchState(roomId: string) {
+        async fetchState(lobbyId: string) {
             const conn = useConnectionStore()
-            const res = await conn.emitWithAck<Game>('room:state', { roomId })
+            const res = await conn.emitWithAck<Game>('room:state', { lobbyId })
 
             if (res.error) return res
 
@@ -105,26 +106,26 @@ export const useLobbyStore = defineStore('lobby', {
 
 
 
-        async leaveLobby(roomId: string) {
+        async leaveLobby(lobbyId: string) {
             const conn = useConnectionStore()
-            const res = await conn.emitWithAck<{ ok?: boolean; error?: string }>('room:leave', { roomId })
+            const res = await conn.emitWithAck<{ ok?: boolean; error?: string }>('room:leave', { lobbyId })
             if (!res.error) {
                 this.players = this.players.filter((p) => p.id !== conn.getSocketSafe()?.id)
             }
             return res
         },
 
-        async setSelectedPacks(roomId: string, packs: string[]) {
+        async setSelectedPacks(lobbyId: string, packs: string[]) {
             const conn = useConnectionStore()
             this.selectedPacks = packs
             const socket = await conn.ensureSocket()
-            socket.emit('packs:update', { roomId, packs })
+            socket.emit('packs:update', { lobbyId, packs })
         },
 
-        async setReady(roomId: string, ready = true) {
+        async setReady(lobbyId: string, ready = true) {
             const conn = useConnectionStore()
             const res = await conn.emitWithAck<{ ok?: boolean; error?: string }>('player:ready', {
-                roomId,
+                lobbyId,
                 ready,
             })
 
@@ -170,7 +171,17 @@ export const useLobbyStore = defineStore('lobby', {
 
         markPhaseTimeout() {
             this.phaseTimeoutTick += 1
-        }
+        },
+
+        setCurrentRound(round: number) {
+            this.currentRound = round
+        },
+
+        setCurrentPlayerCards(cards: WhiteCard[]) {
+            const player = this.getCurrentPlayer()
+            if (!player) return
+            player.white_cards = cards ?? []
+        },
 
     },
 })
