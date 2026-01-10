@@ -1,13 +1,23 @@
-# Card madness
 
-Multiplayer card game prototype built with **Vue 3 (Vite)** on the client and a **Node.js + Socket.IO** server.
+<p align="center"><img src="https://chielreijnen.nl/cardmadness/logo.png" width="200" alt="Logo"></p>
+<p align="center">
+<a href="https://github.com/chielre/card-madness/issues"><img alt="GitHub Issues or Pull Requests" src="https://img.shields.io/github/issues/chielre/card-madness"></a>
+<img alt="GitHub package.json version" src="https://img.shields.io/github/package-json/v/chielre/card-madness">
+<a href="https://github.com/chielre/card-madness/blob/master/LICENSE"><img src="https://img.shields.io/github/license/chielre/card-madness?color=91bf09" alt="License"></a>
+</p>
 
-## Features
 
-- Create and join lobbies  
-- Real-time lobby state with websockets (players, phases)  
-- Preconfigured card packs **(Coming later)**
-- More to come
+A **mad** HTML5 multiplayer card game built with **Vue 3**, **Node.js**, **Socket.IO** and **[AI](#AI-Disclaimer)**.
+
+## Upcoming features*
+
+- Create and join lobbies 
+- Select your favourite pre-configured card packs
+- Multiplayer via websockets (players)
+- Gameplay with rounds and points
+- Scoreboard
+
+****Card Madness is currently in development, features may come or go***
 
 
 
@@ -43,6 +53,7 @@ npm run dev
 ```
 
 The server will take over the console and will accept websocket connections on the provided port.
+
 
 ## Disclaimer
 
