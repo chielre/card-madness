@@ -2,20 +2,32 @@ import { createServer } from 'http'
 import { Server } from 'socket.io'
 import { nanoid } from 'nanoid'
 import chalk from 'chalk';
+import dotenv from "dotenv"
 
 // server files
 import { games, socketRooms, phaseTimers } from './state/store.js'
 import { registerHandlers } from './io/registerHandlers.js'
 import { startConsole } from './console.js'
 
-const PORT = process.env.PORT || 3000
+const PORT = process.env.SERVER_WS_PORT || 3001
+const rawWsOrigins = process.env.SERVER_WS_ORIGINS || ""
+const allowedWsOrigins = rawWsOrigins.split(",").map(o => o.trim()).filter(Boolean)
 
+
+dotenv.config({ path: "../.env", quiet: true })
 
 
 const httpServer = createServer()
 const io = new Server(httpServer, {
     cors: {
-        origin: 'http://localhost:5173',
+        origin: (origin, cb) => {
+            if (!origin || !allowedWsOrigins.length) return cb(null, true)
+
+            if (allowedWsOrigins.some(p => allowedWsOrigins.startsWith(p.replace("*", ""))))
+                return cb(null, true)
+
+            cb(new Error("Not allowed by CORS"))
+        },
         methods: ['GET', 'POST'],
     },
 })
