@@ -24,7 +24,9 @@ jobs:
         with:
           node-version: 20
           cache: npm
-
+      - name: Check env
+        run: |
+          test -n "$VITE_SERVER_WS_URL" && echo "VITE_SERVER_WS_URL is set" || (echo "NOT set" && exit 1)
       - name: Clean install (workaround rollup optional deps)
         run: |
           rm -rf node_modules package-lock.json
