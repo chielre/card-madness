@@ -24,6 +24,13 @@ jobs:
         with:
           node-version: 20
           cache: npm
+      - name: Debug info
+        run: |
+          node -v
+          npm -v
+          ls -la
+          test -f package.json && cat package.json | head -n 40 || true
+          test -f package-lock.json && echo "package-lock.json OK" || echo "NO package-lock.json"
 
       - name: Install
         run: npm ci
