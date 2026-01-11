@@ -18,15 +18,18 @@ A **mad** HTML5 multiplayer card game based on Card Against Humanity. Built with
 > [!IMPORTANT]
 > Card Madness is currently under active development. Cloning this repository may not provide a fully working game or a functional server. While this notice is present, Card Madness may not run reliably on your machine. 
 
+## Why?
+So far, I haven’t found a good, modern, and easy way to play Cards Against Humanity with friends online. Existing solutions require you to register, pay, or are limited in the features they offer. That’s why I decided to contribute to the open-source community by building a fun game that does exactly what it promises, for free.
+
 ## Planned features
 
-- Create and join lobbies without
-- Select your favourite pre-configured card packs
+- Create and join lobbies without registration
+- Pre-configured card packs
+- Lobby settings (rounds, white cards etc.)
 - Personalised cards based on players
-- Multiplayer via websockets (players)
-- Gameplay with rounds and points
-- Scoreboard
-
+- Multiplayer via websockets
+- Scoreboard and round results
+- Card czar selection and audience selection
 
 
 
