@@ -33,7 +33,8 @@ jobs:
 
       - name: Build
         run: npm run build
-        env: ${{ secrets.SERVER_WS_URL }}
+        env: 
+          SERVER_WS_URL: ${{ secrets.SERVER_WS_URL }}
           
 
       - name: Verify dist
