@@ -36,7 +36,7 @@ jobs:
       - name: Build
         run: npm run build
         env: 
-          SERVER_WS_URL: ${{ secrets.SERVER_WS_URL }}
+          VITE_WS_SERVER_URL: ${{ secrets.SERVER_WS_URL }}
           
 
       - name: Verify dist

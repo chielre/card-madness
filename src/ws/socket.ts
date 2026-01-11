@@ -12,7 +12,7 @@ export function connectSocket(): Promise<Socket> {
     if (socket && socket.connected) return Promise.resolve(socket)
 
     connectPromise = new Promise((resolve, reject) => {
-        const url = import.meta.env.WS_SERVER_URL ?? 'http://localhost:3001'
+        const url = import.meta.env.VITE_WS_SERVER_URL ?? 'http://localhost:3001'
 
         const s = io(url, {
             transports: ['websocket'],
