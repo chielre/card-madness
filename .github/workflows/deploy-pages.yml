@@ -25,24 +25,14 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Debug
+      - name: Clean install (workaround rollup optional deps)
         run: |
-          set -eux
-          node -v
-          npm -v
-          ls -la
-          test -f package.json && cat package.json | head -n 80 || true
-          test -f package-lock.json && echo "package-lock.json OK" || echo "NO package-lock.json"
+          rm -rf node_modules package-lock.json
+          npm cache verify
+          npm install
 
-      # npm ci faalt altijd zonder package-lock.json
-      - name: Install (ci if possible)
-        run: |
-          set -eux
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
+      - name: Build
+        run: npm run build
 
       - name: Build (verbose)
         run: |
