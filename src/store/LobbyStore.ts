@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { useConnectionStore } from './ConnectionStore'
-import { resolveWhiteCards } from "@/utils/cards"
+import { resolveBlackCard, resolveWhiteCards } from "@/utils/cards"
 
 
 type WhiteCard = {
@@ -15,6 +15,15 @@ type Player = {
     name: string,
     white_cards: WhiteCard[],
     ready?: boolean
+}
+
+type RoundState = {
+    cardSelector: {
+        player: string | null
+        selectedCard: any
+    }
+    blackCard: any
+    playerSelectedCards: { playerId: string; card?: WhiteCard | null }[]
 }
 
 type Game = {
@@ -39,11 +48,33 @@ export const useLobbyStore = defineStore('lobby', {
         host: '' as string,
         phase: 'lobby' as string,
         phaseTimeoutTick: 0,
-        currentRound: 0,
+        phaseTimerPhase: '',
+        phaseTimerDurationMs: 0,
+        phaseTimerExpiresAt: 0,
+        currentRound: null as RoundState | null,
+        roundStartedTick: 0,
+        roundTimerDurationMs: 0,
+        roundTimerExpiresAt: 0,
+        roundTimeoutTick: 0,
+        pendingSelectedCard: null as WhiteCard | null,
+        pendingSelectedCardTick: 0,
+        pendingUnselectedCard: null as WhiteCard | null,
+        pendingUnselectedCardTick: 0,
+        pendingCzarSelectedEntry: null as { playerId: string; card: WhiteCard } | null,
+        pendingCzarSelectedTick: 0,
+        lastSelectedCard: null as { playerId: string; card?: WhiteCard | null; action: 'selected' | 'unselected' } | null,
+        selectedCardAnimTick: 0,
     }),
 
     actions: {
+        getCurrentCardSelector(): Player | null {
+            const id = this.currentRound?.cardSelector?.player
+            console.log(id)
 
+            if (!id) return null
+            
+            return this.players.find(p => p.id === id) ?? null
+        },
         addPlayer(player: Player) {
             if (!this.players.find((p) => p.id === player.id)) {
                 this.players.push(normalizePlayer(player))
@@ -169,18 +200,119 @@ export const useLobbyStore = defineStore('lobby', {
             return this.getCurrentPlayer()
         },
 
+        getCurrentPlayerIsCardSelector(): boolean {
+            const conn = useConnectionStore()
+            const socketId = conn.getSocketSafe()?.id
+            if (!socketId) return false
+
+            return socketId === this.currentRound?.cardSelector?.player
+        },
+
+        getCurrentBlackCardHtml(): string | null {
+            const blackCard = this.currentRound?.blackCard
+            if (!blackCard) return null
+            const selectedEntry = this.currentRound?.cardSelector?.selectedCard
+            try {
+                let answerHtml: string | undefined
+                if (selectedEntry?.card) {
+                    const resolved = resolveWhiteCards([selectedEntry.card])
+                    answerHtml = resolved[0]?.text
+                }
+                return resolveBlackCard(blackCard, answerHtml).text
+            } catch {
+                return null
+            }
+        },
+
+        isPlayerCardSelector(playerId: string): boolean {
+            return playerId === this.currentRound?.cardSelector?.player
+        },
+
         markPhaseTimeout() {
             this.phaseTimeoutTick += 1
         },
 
-        setCurrentRound(round: number) {
+        setPhaseTimer(phase?: string, durationMs?: number, expiresAt?: number) {
+            this.phaseTimerPhase = phase ?? ''
+            this.phaseTimerDurationMs = durationMs ?? 0
+            this.phaseTimerExpiresAt = expiresAt ?? 0
+        },
+
+        setCurrentRound(round: RoundState | null) {
             this.currentRound = round
+        },
+
+        markRoundStarted() {
+            this.roundStartedTick += 1
+        },
+
+        markRoundTimeout() {
+            this.roundTimeoutTick += 1
+        },
+
+        setRoundTimer(durationMs?: number, expiresAt?: number) {
+            this.roundTimerDurationMs = durationMs ?? 0
+            this.roundTimerExpiresAt = expiresAt ?? 0
         },
 
         setCurrentPlayerCards(cards: WhiteCard[]) {
             const player = this.getCurrentPlayer()
             if (!player) return
             player.white_cards = cards ?? []
+        },
+
+        queueSelectedCard(card: WhiteCard) {
+            this.pendingSelectedCard = card
+            this.pendingSelectedCardTick += 1
+        },
+
+        queueUnselectedCard(card: WhiteCard) {
+            this.pendingUnselectedCard = card
+            this.pendingUnselectedCardTick += 1
+        },
+
+        clearPendingSelectedCard() {
+            this.pendingSelectedCard = null
+        },
+
+        clearPendingUnselectedCard() {
+            this.pendingUnselectedCard = null
+        },
+
+        queueCzarSelectedEntry(entry: { playerId: string; card: WhiteCard }) {
+            this.pendingCzarSelectedEntry = entry
+            this.pendingCzarSelectedTick += 1
+        },
+
+        clearPendingCzarSelectedEntry() {
+            this.pendingCzarSelectedEntry = null
+        },
+
+        recordPlayerSelectedCard(payload: { playerId: string; card?: WhiteCard | null }) {
+            if (this.currentRound) {
+                const list = this.currentRound.playerSelectedCards ?? []
+                const idx = list.findIndex((c) => c.playerId === payload.playerId)
+                const prevCard = idx >= 0 ? list[idx]?.card : null
+                const nextEntry = { playerId: payload.playerId, card: payload.card ?? prevCard ?? null }
+                if (idx >= 0) {
+                    list[idx] = nextEntry
+                } else {
+                    list.push(nextEntry)
+                }
+                this.currentRound.playerSelectedCards = list
+            }
+            this.lastSelectedCard = { playerId: payload.playerId, card: payload.card ?? null, action: 'selected' }
+            this.selectedCardAnimTick += 1
+        },
+
+        recordPlayerUnselectedCard(payload: { playerId: string; card?: WhiteCard | null }) {
+            if (this.currentRound) {
+                const list = this.currentRound.playerSelectedCards ?? []
+                const next = list.filter((c) => c.playerId !== payload.playerId)
+                this.currentRound.playerSelectedCards = next
+            }
+            this.lastSelectedCard = { playerId: payload.playerId, card: payload.card ?? null, action: 'unselected' }
+            this.selectedCardAnimTick += 1
         },
 
     },

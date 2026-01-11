@@ -1,7 +1,9 @@
 import { createGame, joinGame, leaveGame } from '../services/gameService.js'
 import { transitionPhase } from '../services/phaseService.js'
+import { startCzarPhase, startRoundFlow } from '../services/phaseFlowService.js'
 import { trackJoin, trackLeave } from '../services/socketRoomService.js'
 import { clearPhaseTimer, schedulePhaseTimer } from '../utils/phaseTimers.js'
+import { clearRoundTimer } from '../utils/roundTimers.js'
 import { PHASE_DEFAULT_DURATIONS } from '../config/phaseDurations.js'
 
 export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
@@ -49,6 +51,11 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
         socket.to(lobbyId).emit('room:player-left', { id: socket.id, players: res.game?.players ?? [] })
         if (res.hostChangedTo) io.to(lobbyId).emit('room:host-changed', { hostId: res.hostChangedTo })
 
+        if (res.deleted) {
+            clearPhaseTimer(lobbyId)
+            clearRoundTimer(lobbyId)
+        }
+
         cb?.({ ok: true })
     })
 
@@ -64,13 +71,28 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
 
         if (game.host !== socket.id) return cb?.({ error: 'not_host' })
 
+        clearPhaseTimer(lobbyId)
+        clearRoundTimer(lobbyId)
+
+        if (phase === 'board') {
+            const currentRound = Number(game.currentRound) || 0
+            const nextRound = game.phase === 'czar-result' ? currentRound + 1 : Math.max(1, currentRound || 1)
+            const res = startRoundFlow({ io, games, lobbyId, round: nextRound, durationMs })
+            if (res?.error) return cb?.(res)
+            const updated = games.get(lobbyId)
+            return cb?.({ lobbyId: lobbyId, phase: updated?.phase ?? game.phase, host: updated?.host ?? game.host, players: updated?.players ?? game.players, selectedPacks: updated?.selectedPacks ?? game.selectedPacks ?? [] })
+        }
+
+        if (phase === 'czar') {
+            startCzarPhase({ io, games, lobbyId, round: game.currentRound, durationMs })
+            const updated = games.get(lobbyId)
+            return cb?.({ lobbyId: lobbyId, phase: updated?.phase ?? game.phase, host: updated?.host ?? game.host, players: updated?.players ?? game.players, selectedPacks: updated?.selectedPacks ?? game.selectedPacks ?? [] })
+        }
+
         const res = transitionPhase({ games, io, lobbyId, to: phase })
         if (res.error) return cb?.(res)
 
-        clearPhaseTimer(lobbyId)
-
-        // schedule a timeout notification using provided duration or defaults
-        schedulePhaseTimer({
+        const phaseTimer = schedulePhaseTimer({
             io,
             lobbyId,
             phase: res.game.phase,
@@ -81,6 +103,9 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
                 transitionPhase({ games, io, lobbyId, to: nextPhase })
             },
         })
+        if (phaseTimer) {
+            io.to(lobbyId).emit('room:phase-timer', { phase: res.game.phase, ...phaseTimer })
+        }
 
         cb?.({ lobbyId: lobbyId, phase: game.phase, host: game.host, players: game.players, selectedPacks: game.selectedPacks ?? [] })
 

@@ -9,9 +9,9 @@ import BoardScreen from '@/components/screens/game/Board.vue'
 
 const lobby = useLobbyStore()
 
-const showLobbyScreen = computed(() => ['lobby', 'starting', 'intro'].includes(lobby.phase))
-const showIntroScreen = computed(() => lobby.phase === 'intro')
-const showBoardScreen = computed(() => ['intro', 'board'].includes(lobby.phase))
+const showLobbyScreen = computed(() => ['lobby', 'starting'].includes(lobby.phase) || (lobby.phase === 'intro' && !shouldSkipIntro.value))
+const showIntroScreen = computed(() => lobby.phase === 'intro' && !shouldSkipIntro.value)
+const showBoardScreen = computed(() => ['intro', 'board', 'czar', 'czar-result'].includes(lobby.phase))
 
 const LobbyScreenRef = ref<InstanceType<typeof LobbyScreen> | null>(null)
 const IntroScreenRef = ref<InstanceType<typeof IntroScreen> | null>(null)
@@ -19,6 +19,12 @@ const BoardScreenRef = ref<InstanceType<typeof BoardScreen> | null>(null)
 
 
 let introAnimationTl: gsap.core.Timeline | null = null
+
+const shouldSkipIntro = computed(() => {
+    const stage = (import.meta as any).env?.STAGE
+    const playIntro = (import.meta as any).env?.DEV_PLAY_INTRO
+    return stage === 'development' && String(playIntro) === '0'
+})
 
 
 
@@ -34,13 +40,13 @@ const introPhaseAnimation = async () => {
             LobbyScreenRef.value?.closeReadyModal()
         })
         .to(LobbyScreenRef.value?.$el, { y: -120, autoAlpha: 0, display: "none", duration: 2, ease: 'power2.out' }, 0)
-        .call(() => { IntroScreenRef.value?.runIntroAnimation() })
+        .call(() => { IntroScreenRef.value?.runIntroAnimation() }, [], 0)
         .fromTo(
             BoardScreenRef.value?.$el,
             { autoAlpha: 0 },
             { autoAlpha: 1, duration: 0.8, ease: 'power2.out' },
-            22)
-        .call(() => { BoardScreenRef.value?.runIntroAnimation() })
+            18)
+        .call(() => { BoardScreenRef.value?.runIntroAnimation() }, [], 18)
 
 
 
@@ -53,10 +59,10 @@ const resetIntroPhaseAnimation = () => {
 watch(
     () => lobby.phase,
     (phase) => {
-        console.log(showLobbyScreen, showIntroScreen, showBoardScreen)
         if (phase === 'starting') {
             LobbyScreenRef.value?.openReadyModal();
         } else if (phase === 'intro') {
+            if (shouldSkipIntro.value) return
             introPhaseAnimation()
         }
 

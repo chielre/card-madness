@@ -7,12 +7,14 @@ const props = withDefaults(
     defineProps<{
         initialSeconds?: number
         autoStart?: boolean
+        mode?: 'round' | 'czar'
     }>(),
-    { initialSeconds: 30, autoStart: true }
+    { initialSeconds: 30, autoStart: true, mode: 'round' }
 )
 
-const ENDING_AT = 33
-const LAST_SECONDS_AT = 9
+const ROUND_ENDING_AT = 33
+const ROUND_LAST_SECONDS_AT = 9
+const CZAR_AUDIO_AT = 60
 const TICK_MS = 1000
 
 const audio = useAudioStore()
@@ -36,6 +38,7 @@ let endingTl: gsap.core.Timeline | null = null
 const prevDigits = ref<string[]>([])
 const lastSecondsMode = ref(false)
 const endingMarkPlayed = ref(false)
+const czarMarkPlayed = ref(false)
 
 
 
@@ -78,9 +81,19 @@ function stop() {
 }
 
 function reset(seconds: number) {
+
+    const el = bodyRef.value
+    if (!el) return
+
+    gsap.set(el, {
+        rotate: 0,
+        scale: 1,
+    })
+
     remainingSeconds.value = Math.max(0, Math.floor(seconds))
     prevDigits.value = [...digits.value]
     endingMarkPlayed.value = false
+    czarMarkPlayed.value = false
     lastSecondsMode.value = false
     endingTl?.kill()
     endingTl = null
@@ -197,6 +210,13 @@ function startEndingMark() {
     endingTl!.call(() => gsap.set(el, { clearProps: 'transform' }))
 }
 
+function startCzarMark() {
+    if (czarMarkPlayed.value) return
+    czarMarkPlayed.value = true
+    audio.playCountDown1m()
+    startPulseLines()
+}
+
 watch(
     remainingSeconds,
     (sec) => {
@@ -204,18 +224,30 @@ watch(
         animateChangedDigits()
 
         // last seconds mode
-        const shouldLast = sec <= LAST_SECONDS_AT
-        if (shouldLast !== lastSecondsMode.value) {
-            lastSecondsMode.value = shouldLast
-            shouldLast ? hideNonLastSeconds() : showAllDigits()
-        }
+        if (props.mode === 'round') {
+            const shouldLast = sec <= ROUND_LAST_SECONDS_AT
+            if (shouldLast !== lastSecondsMode.value) {
+                lastSecondsMode.value = shouldLast
+                shouldLast ? hideNonLastSeconds() : showAllDigits()
+            }
 
-        // ending effects
-        if (sec <= ENDING_AT) {
-            startPulseLines()
-            startEndingMark()
+            // ending effects
+            if (sec === ROUND_ENDING_AT) {
+                startPulseLines()
+                startEndingMark()
+            }
+            if (sec > ROUND_ENDING_AT) {
+                stopPulseLines()
+            }
         } else {
-            stopPulseLines()
+            if (lastSecondsMode.value) {
+                lastSecondsMode.value = false
+                showAllDigits()
+            }
+
+            if (sec === CZAR_AUDIO_AT) {
+                startCzarMark()
+            }
         }
     },
     { immediate: true }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useConnectionStore } from '@/store/ConnectionStore'
 import { useLobbyStore } from '@/store/LobbyStore'
@@ -138,6 +138,10 @@ const handleGamePhaseChange = (payload: { phase: string }) => {
     }
     console.log(`New game phase: ${payload.phase}`);
 }
+const handleGamePhaseTimer = (payload: { phase: string; durationMs?: number; expiresAt?: number }) => {
+    if (!payload?.phase) return
+    lobby.setPhaseTimer(payload.phase, payload.durationMs, payload.expiresAt)
+}
 const handleGamePhaseTimeout = (payload: { phase: string }) => {
     if (payload.phase) {
         lobby.markPhaseTimeout()
@@ -151,12 +155,31 @@ const handleGamePhaseTimeout = (payload: { phase: string }) => {
 Board socket events
 */
 
-const handleBoardRoundUpdated = (payload: { round: any }) => {
-    lobby.setCurrentRound(payload.round)
+const handleBoardRoundUpdated = (payload: { currentRound: any }) => {
+    lobby.setCurrentRound(payload.currentRound)
 }
 
-const handleBoardRoundStarted = (payload: { round: any }) => {
-    lobby.setCurrentRound(payload.round)
+const handleBoardRoundStarted = (payload: { currentRound: any; durationMs?: number; expiresAt?: number }) => {
+    lobby.setCurrentRound(payload.currentRound)
+    lobby.setRoundTimer(payload.durationMs, payload.expiresAt)
+    lobby.markRoundStarted()
+    audio.playRoundLoop()
+}
+
+const handleBoardRoundTimeout = (payload: { round: string }) => {
+    if (payload.round) {
+        lobby.markRoundTimeout()
+    }
+    console.log(`Round timeout: ${payload.round}`);
+
+}
+
+const handleBoardPlayerCardSelected = (payload: { playerId: string; card?: any }) => {
+    lobby.recordPlayerSelectedCard(payload)
+}
+
+const handleBoardPlayerCardUnselected = (payload: { playerId: string; card?: any }) => {
+    lobby.recordPlayerUnselectedCard(payload)
 }
 
 
@@ -178,12 +201,16 @@ onMounted(async () => {
 
     socket.on('room:players-changed', handlePlayersUpdated)
     socket.on('room:phase-changed', handleGamePhaseChange)
+    socket.on('room:phase-timer', handleGamePhaseTimer)
     socket.on('room:phase-timeout', handleGamePhaseTimeout)
 
     socket.on('packs:updated', handlePacksUpdated)
 
     socket.on('board:round-updated', handleBoardRoundUpdated)
     socket.on('board:round-started', handleBoardRoundStarted)
+    socket.on('board:round-timeout', handleBoardRoundTimeout)
+    socket.on('board:player-card-selected', handleBoardPlayerCardSelected)
+    socket.on('board:player-card-unselected', handleBoardPlayerCardUnselected)
 
 
 })
@@ -200,13 +227,49 @@ onBeforeUnmount(() => {
 
     socket.off('room:players-changed', handlePlayersUpdated)
     socket.off('room:phase-changed', handleGamePhaseChange)
+    socket.off('room:phase-timer', handleGamePhaseTimer)
     socket.off('room:phase-timeout', handleGamePhaseTimeout)
 
     socket.off('packs:updated', handlePacksUpdated)
 
     socket.off('board:round-updated', handleBoardRoundUpdated)
     socket.off('board:round-started', handleBoardRoundStarted)
+    socket.off('board:player-card-selected', handleBoardPlayerCardSelected)
+    socket.off('board:player-card-unselected', handleBoardPlayerCardUnselected)
 })
+
+watch(
+    () => lobby.pendingSelectedCardTick,
+    (tick) => {
+        if (!tick || !socket) return
+        const card = lobby.pendingSelectedCard
+        if (!card) return
+        socket.emit('player:card-selected', { lobbyId, card })
+        lobby.clearPendingSelectedCard()
+    }
+)
+
+watch(
+    () => lobby.pendingUnselectedCardTick,
+    (tick) => {
+        if (!tick || !socket) return
+        const card = lobby.pendingUnselectedCard
+        if (!card) return
+        socket.emit('player:card-unselected', { lobbyId, card })
+        lobby.clearPendingUnselectedCard()
+    }
+)
+
+watch(
+    () => lobby.pendingCzarSelectedTick,
+    (tick) => {
+        if (!tick || !socket) return
+        const entry = lobby.pendingCzarSelectedEntry
+        if (!entry) return
+        socket.emit('czar:card-selected', { lobbyId, entry })
+        lobby.clearPendingCzarSelectedEntry()
+    }
+)
 </script>
 
 <template>

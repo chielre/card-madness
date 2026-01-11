@@ -9,6 +9,11 @@ import gameCmdMusic from '@assets/audio/game_cmd.mp3'
 import countDown52 from '@assets/audio/countdown_52.mp3'
 import countDown33 from '@assets/audio/countdown_33.mp3'
 import introGameMusic from '@assets/audio/intro_game.mp3'
+import gameRound1Music from '@assets/audio/game_1.mp3'
+import gameRound2Music from '@assets/audio/game_2.mp3'
+import wrapMusic from '@assets/audio/wrap.mp3'
+import countDown1m from '@assets/audio/countdown1m.mp3'
+import wrapCzarMusic from '@assets/audio/wrap_czar.mp3'
 
 type Track = string | null
 type Seconds = '52' | '33'
@@ -19,6 +24,8 @@ let gameHowl: Howl | null = null
 let gameNsfwHowl: Howl | null = null
 let gameCmdHowl: Howl | null = null
 let introGameHowl: Howl | null = null
+let gameRoundHowl1: Howl | null = null
+let gameRoundHowl2: Howl | null = null
 let swooshHowl: Howl | null = null
 
 const effectHowls: Record<string, Howl> = {}
@@ -45,6 +52,7 @@ let oneShotHowl: Howl | null = null
 let oneShotId: string | null = null
 
 const FADE_OUT_MS = 400
+let roundLoopActive = false
 
 const loadPromises = new WeakMap<Howl, Promise<void>>()
 
@@ -90,6 +98,24 @@ function fadeOutHowl(howl: Howl, duration = FADE_OUT_MS) {
   }, duration + 20)
 }
 
+function wireRoundLoopHandlers() {
+  if (!gameRoundHowl1 || !gameRoundHowl2) return
+  gameRoundHowl1.off('end', onRound1End)
+  gameRoundHowl2.off('end', onRound2End)
+  gameRoundHowl1.on('end', onRound1End)
+  gameRoundHowl2.on('end', onRound2End)
+}
+
+function onRound1End() {
+  if (!roundLoopActive || !gameRoundHowl2) return
+  gameRoundHowl2.play()
+}
+
+function onRound2End() {
+  if (!roundLoopActive || !gameRoundHowl1) return
+  gameRoundHowl1.play()
+}
+
 export const useAudioStore = defineStore('audio', {
   state: () => ({
     current: null as Track,
@@ -119,6 +145,14 @@ export const useAudioStore = defineStore('audio', {
       if (!introGameHowl) introGameHowl = new Howl({ src: [introGameMusic], loop: false, volume: 0.5 })
       return introGameHowl
     },
+    ensureGameRound1() {
+      if (!gameRoundHowl1) gameRoundHowl1 = new Howl({ src: [gameRound1Music], loop: false, volume: 0.5 })
+      return gameRoundHowl1
+    },
+    ensureGameRound2() {
+      if (!gameRoundHowl2) gameRoundHowl2 = new Howl({ src: [gameRound2Music], loop: false, volume: 0.5 })
+      return gameRoundHowl2
+    },
     ensureCustom(key: string, src: string) {
       if (!customHowls[key]) customHowls[key] = new Howl({ src: [src], loop: true, volume: 0.5 })
       return customHowls[key]
@@ -141,6 +175,8 @@ export const useAudioStore = defineStore('audio', {
     readyGameNsfw() { return waitForLoad(this.ensureGameNsfw()) },
     readyGameCmd() { return waitForLoad(this.ensureGameCmd()) },
     readyIntroGame() { return waitForLoad(this.ensureIntroGame()) },
+    readyGameRound1() { return waitForLoad(this.ensureGameRound1()) },
+    readyGameRound2() { return waitForLoad(this.ensureGameRound2()) },
 
     readyCustom(key: string, src: string) { return waitForLoad(this.ensureCustom(key, src)) },
     readyEffect(key: string, src: string, volume = 0.7) { return waitForLoad(this.ensureEffect(key, src, volume)) },
@@ -149,19 +185,32 @@ export const useAudioStore = defineStore('audio', {
       const src = seconds === '52' ? countDown52 : countDown33
       return this.readyEffect(`countdown_${seconds}`, src)
     },
+    readyCountDown1m() {
+      return this.readyEffect('countdown_1m', countDown1m)
+    },
 
     readyCustomOnce(key: string, src: string) {
       return waitForLoad(this.ensureOneShot(`once:${key}`, src))
     },
+    readyWrap() {
+      return this.readyEffect('wrap', wrapMusic)
+    },
+    readyWrapCzar() {
+      return this.readyEffect('wrap_czar', wrapCzarMusic)
+    },
 
     stopAll() {
+      roundLoopActive = false
       if (mainHowl) fadeOutHowl(mainHowl)
       if (lobbyHowl) fadeOutHowl(lobbyHowl)
       if (gameHowl) fadeOutHowl(gameHowl)
       if (gameNsfwHowl) fadeOutHowl(gameNsfwHowl)
       if (gameCmdHowl) fadeOutHowl(gameCmdHowl)
       if (introGameHowl) fadeOutHowl(introGameHowl)
+      if (gameRoundHowl1) fadeOutHowl(gameRoundHowl1)
+      if (gameRoundHowl2) fadeOutHowl(gameRoundHowl2)
       if (oneShotHowl) fadeOutHowl(oneShotHowl)
+        
       Object.values(customHowls).forEach((h) => fadeOutHowl(h))
       Object.values(effectHowls).forEach((h) => fadeOutHowl(h))
     },
@@ -214,6 +263,18 @@ export const useAudioStore = defineStore('audio', {
       this.current = 'intro_game'
     },
 
+    async playRoundLoop() {
+      if (this.current === 'game_round_loop' && roundLoopActive) return
+      this.stopAll()
+      await Promise.all([this.readyGameRound1(), this.readyGameRound2()])
+      this.ensureGameRound1()
+      this.ensureGameRound2()
+      wireRoundLoopHandlers()
+      roundLoopActive = true
+      gameRoundHowl1!.play()
+      this.current = 'game_round_loop'
+    },
+
     async playCustom(key: string, src: string) {
       if (this.current === key) return
       this.stopAll()
@@ -230,6 +291,15 @@ export const useAudioStore = defineStore('audio', {
       const src = seconds === '52' ? countDown52 : countDown33
       await this.readyEffect(`countdown_${seconds}`, src)
       this.ensureEffect(`countdown_${seconds}`, src).play()
+      this.current = track
+    },
+    async playCountDown1m() {
+      const track = 'once:countdown_1m'
+      if (this.current === track) return
+
+      this.stopAll()
+      await this.readyCountDown1m()
+      this.ensureEffect('countdown_1m', countDown1m).play()
       this.current = track
     },
 
@@ -259,9 +329,31 @@ export const useAudioStore = defineStore('audio', {
       this.current = track
     },
 
+    async playWrapOnce() {
+      const track = 'once:wrap'
+      if (this.current === track) return
+
+      this.stopAll()
+      await this.readyWrap()
+      this.ensureEffect('wrap', wrapMusic).play()
+      this.current = track
+    },
+
+    async playWrapCzarOnce() {
+      const track = 'once:wrap_czar'
+      if (this.current === track) return
+
+      this.stopAll()
+      await this.readyWrapCzar()
+      this.ensureEffect('wrap_czar', wrapCzarMusic).play()
+      this.current = track
+    },
+
     playEffectOnce(src: string, volume = 0.7) {
       const key = `effect:${src}`
       const fx = this.ensureEffect(key, src, volume)
+      this.stopAll()
+
       fx.play()
     },
 
@@ -275,12 +367,22 @@ export const useAudioStore = defineStore('audio', {
       howls.add(this.ensureGameNsfw())
       howls.add(this.ensureGameCmd())
       howls.add(this.ensureIntroGame())
+      howls.add(this.ensureGameRound1())
+      howls.add(this.ensureGameRound2())
 
       // effects
       howls.add(this.ensureEffect('countdown_52', countDown52))
       howls.add(this.ensureEffect('countdown_33', countDown33))
+      howls.add(this.ensureEffect('countdown_1m', countDown1m))
+      howls.add(this.ensureEffect('wrap', wrapMusic))
+      howls.add(this.ensureEffect('wrap_czar', wrapCzarMusic))
+
       swooshUrls.forEach((src) => {
         howls.add(this.ensureEffect(`swoosh:${src}`, src))
+      })
+
+      popUrls.forEach((src) => {
+        howls.add(this.ensureEffect(`pop:${src}`, src))
       })
 
       const items = Array.from(howls)

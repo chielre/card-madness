@@ -9,6 +9,11 @@ export type WhiteCardInput = {
     name?: string
 }
 
+export type BlackCardInput = {
+    pack: string
+    card_id: number
+}
+
 export type ResolvedCard = WhiteCardInput & {
     text: string
 }
@@ -36,8 +41,29 @@ function getCardsByPack(): Record<string, CardPackRaw> {
     return _cardsByPack
 }
 
-function hydrate(text: string, name?: string) {
-    return text.replace(/:name/g, name ?? "")
+function escapeHtml(value: string) {
+    return value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;")
+}
+
+function formatName(name?: string) {
+    if (!name) return ""
+    return `<span class="card-name">${escapeHtml(name)}</span>`
+}
+
+function formatAnswerHtml(answerHtml?: string) {
+    const value = answerHtml && answerHtml.trim() ? answerHtml : "______"
+    return `<span class="card-answer">${value}</span>`
+}
+
+function hydrate(text: string, name?: string, answerHtml?: string) {
+    return text
+        .replace(/:name/g, formatName(name))
+        .replace(/:answer/g, formatAnswerHtml(answerHtml))
 }
 
 export function resolveWhiteCards(cards: WhiteCardInput[]): ResolvedCard[] {
@@ -54,4 +80,18 @@ export function resolveWhiteCards(cards: WhiteCardInput[]): ResolvedCard[] {
 
         return { pack: pack, card_id: card_id, name: name, text: hydrate(text, name) }
     })
+}
+
+export function resolveBlackCard(card: BlackCardInput, answerHtml?: string): ResolvedCard {
+    const cardsByPack = getCardsByPack()
+
+    if (!getPackById(card.pack)) throw new Error(`Unknown pack: ${card.pack}`)
+
+    const packJson = cardsByPack[card.pack]
+    if (!packJson) throw new Error(`Missing cards json for pack: ${card.pack}`)
+
+    const text = packJson.black?.[card.card_id]
+    if (!text) throw new Error(`Unknown black card_id ${card.card_id} in pack ${card.pack}`)
+
+    return { pack: card.pack, card_id: card.card_id, text: hydrate(text, undefined, answerHtml) }
 }

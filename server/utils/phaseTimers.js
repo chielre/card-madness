@@ -25,4 +25,5 @@ export const schedulePhaseTimer = ({ io, lobbyId, phase, durationMs, defaultDura
     }, ms)
 
     phaseTimers.set(lobbyId, { timer, phase, durationMs: ms, expiresAt })
+    return { durationMs: ms, expiresAt }
 }

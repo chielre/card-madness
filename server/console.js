@@ -36,7 +36,7 @@ export const startConsole = ({ io, games, phaseTimers, roundTimers, intervalMs =
         ].join(chalk.bold.gray(" | "))
     }
 
-    const roundTimerList = (lobbyId, entry) => {
+    const roundTimerLine = (lobbyId, entry) => {
         const remainingMs = entry?.expiresAt ? Math.max(0, entry.expiresAt - Date.now()) : null
         const remaining = remainingMs !== null ? `${Math.ceil(remainingMs / 1000)}s` : 'n/a'
         return [
@@ -53,6 +53,7 @@ export const startConsole = ({ io, games, phaseTimers, roundTimers, intervalMs =
         const sockets = io.of("/").sockets.size
         const lobbies = games.size
         const timers = phaseTimers.size
+        const roundTimersCount = roundTimers.size
         const uptime = fmtUptime(Date.now() - startedAt)
 
         const lobbyList =
@@ -71,10 +72,10 @@ export const startConsole = ({ io, games, phaseTimers, roundTimers, intervalMs =
                     .join("\n")
 
         const roundTimerList =
-            timers === 0
+            roundTimersCount === 0
                 ? chalk.gray("  (geen timers)")
                 : [...roundTimers.entries()]
-                    .map(([lobbyId, entry]) => "  " + phaseTimerLine(lobbyId, entry))
+                    .map(([lobbyId, entry]) => "  " + roundTimerLine(lobbyId, entry))
                     .join("\n")
 
         logUpdate([
@@ -87,7 +88,7 @@ export const startConsole = ({ io, games, phaseTimers, roundTimers, intervalMs =
             `${lobbyList}`,
             `${chalk.bold("Phase timers:")}`,
             `${phaseTimersList}`,
-                `${chalk.bold("Round timers:")}`,
+            `${chalk.bold("Round timers:")}`,
             `${roundTimerList}`
         ].join("\n"))
     }

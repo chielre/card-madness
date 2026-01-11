@@ -159,25 +159,7 @@ export const joinGame = ({ games, lobbyId, player }) => {
         ...player,
         name: normalizeName(player?.name),
         language: normalizeLanguage(player?.language),
-
-        //DEV IF YOU SEE THIS, I FUCKED UP
-        white_cards: [
-            {
-                pack: 'base',
-                card_id: 2,
-                name: 'Chiel'
-            },
-            {
-                pack: 'base',
-                card_id: 1,
-                name: 'Chiel'
-            },
-            {
-                pack: 'base',
-                card_id: 3,
-                name: 'Chiel'
-            }
-        ]
+        white_cards: []
     }
 
     game.players.push(nextPlayer)
@@ -239,6 +221,8 @@ export const setPhase = ({ games, lobbyId, to }) => {
         STARTING: 'starting',
         INTRO: 'intro',
         BOARD: 'board',
+        CZAR: 'czar',
+        CZAR_RESULT: 'czar-result',
         RESULTS: 'results',
     })
 
@@ -246,7 +230,9 @@ export const setPhase = ({ games, lobbyId, to }) => {
         [Phase.LOBBY]: new Set([Phase.STARTING]),
         [Phase.STARTING]: new Set([Phase.INTRO]),
         [Phase.INTRO]: new Set([Phase.BOARD]),
-        [Phase.BOARD]: new Set([Phase.RESULTS]),
+        [Phase.BOARD]: new Set([Phase.CZAR]),
+        [Phase.CZAR]: new Set([Phase.CZAR_RESULT]),
+        [Phase.CZAR_RESULT]: new Set([Phase.BOARD, Phase.RESULTS]),
         [Phase.RESULTS]: new Set([Phase.LOBBY]),
     }
 
@@ -278,7 +264,7 @@ export const setRound = ({ games, lobbyId, to }) => {
 
     if (!hasRound(game, to)) return { error: "round_not_found" }
 
-    prepareRound({ games, lobbyId, to: to })
+    prepareRound({ games, lobbyId, round: to })
 
     game.currentRound = to
     games.set(lobbyId, game)
@@ -315,4 +301,189 @@ export const prepareRound = ({ games, lobbyId, round }) => {
     games.set(lobbyId, game)
 
     return { game, round: targetRound }
+}
+
+export const selectPlayerCard = ({ games, lobbyId, playerId, card }) => {
+    const game = games.get(lobbyId)
+    if (!game) return { error: "not_found" }
+
+    if (game.phase !== 'board') return { error: "round_not_active" }
+
+    const roundNumber = game.currentRound
+    const round = game.rounds?.[roundNumber]
+    if (!round) return { error: "round_not_found" }
+
+    if (round.cardSelector?.player === playerId) return { error: "card_selector_cannot_select" }
+
+    const player = game.players?.find((p) => p.id === playerId)
+    if (!player) return { error: "player_not_found" }
+
+    const selected = player.white_cards?.find((c) => c.pack === card?.pack && c.card_id === card?.card_id) ?? card
+    if (!selected) return { error: "card_not_found" }
+
+    round.playerSelectedCards = round.playerSelectedCards ?? []
+    const idx = round.playerSelectedCards.findIndex((c) => c.playerId === playerId)
+    const entry = { playerId, card: selected }
+    if (idx >= 0) {
+        round.playerSelectedCards[idx] = entry
+    } else {
+        round.playerSelectedCards.push(entry)
+    }
+
+    game.rounds[roundNumber] = round
+    games.set(lobbyId, game)
+
+    return { game, round, playerSelectedCard: entry }
+}
+
+export const unselectPlayerCard = ({ games, lobbyId, playerId, card }) => {
+    const game = games.get(lobbyId)
+    if (!game) return { error: "not_found" }
+
+    if (game.phase !== 'board') return { error: "round_not_active" }
+
+    const roundNumber = game.currentRound
+    const round = game.rounds?.[roundNumber]
+    if (!round) return { error: "round_not_found" }
+
+    round.playerSelectedCards = (round.playerSelectedCards ?? []).filter((c) => c.playerId !== playerId)
+    game.rounds[roundNumber] = round
+    games.set(lobbyId, game)
+
+    return { game, round, playerSelectedCard: { playerId, card } }
+}
+
+export const areAllNonSelectorPlayersSelected = (game) => {
+    if (!game) return false
+    if (game.phase !== 'board') return false
+
+    const round = game.rounds?.[game.currentRound]
+    if (!round) return false
+
+    const selectorId = round.cardSelector?.player
+    const eligiblePlayers = (game.players ?? []).filter((p) => p.id !== selectorId)
+    if (!eligiblePlayers.length) return false
+
+    const selectedIds = new Set((round.playerSelectedCards ?? []).map((entry) => entry.playerId))
+    return eligiblePlayers.every((p) => selectedIds.has(p.id))
+}
+
+export const autoSelectMissingPlayerCards = ({ games, lobbyId }) => {
+    const game = games.get(lobbyId)
+    if (!game) return { error: "not_found" }
+
+    const roundNumber = game.currentRound
+    const round = game.rounds?.[roundNumber]
+    if (!round) return { error: "round_not_found" }
+
+    const selectorId = round.cardSelector?.player
+    const selectedIds = new Set((round.playerSelectedCards ?? []).map((entry) => entry.playerId))
+    const missingPlayers = (game.players ?? []).filter((p) => p.id !== selectorId && !selectedIds.has(p.id))
+
+    if (!missingPlayers.length) return { game, round, added: [] }
+
+    const rand = (max) => Math.floor(Math.random() * max)
+    round.playerSelectedCards = round.playerSelectedCards ?? []
+    const added = []
+
+    for (const player of missingPlayers) {
+        const cards = player.white_cards ?? []
+        if (!cards.length) continue
+        const picked = cards[rand(cards.length)]
+        const entry = { playerId: player.id, card: picked }
+        round.playerSelectedCards.push(entry)
+        added.push(entry)
+    }
+
+    game.rounds[roundNumber] = round
+    games.set(lobbyId, game)
+
+    return { game, round, added }
+}
+
+export const autoSelectCzarCard = ({ games, lobbyId }) => {
+    const game = games.get(lobbyId)
+    if (!game) return { error: "not_found" }
+
+    const roundNumber = game.currentRound
+    const round = game.rounds?.[roundNumber]
+    if (!round) return { error: "round_not_found" }
+
+    const currentSelected = round.cardSelector?.selectedCard
+    if (currentSelected?.playerId) return { game, round, selected: currentSelected }
+
+    const pool = round.playerSelectedCards ?? []
+    if (!pool.length) return { game, round, selected: null }
+
+    const rand = (max) => Math.floor(Math.random() * max)
+    const picked = pool[rand(pool.length)]
+    round.cardSelector = round.cardSelector ?? { player: null, selectedCard: {} }
+    round.cardSelector.selectedCard = picked
+
+    game.rounds[roundNumber] = round
+    games.set(lobbyId, game)
+
+    return { game, round, selected: picked }
+}
+
+export const finalizeRound = async ({ games, lobbyId, handSize = 5, uniquePerGame = true }) => {
+    const game = games.get(lobbyId)
+    if (!game) return { error: "not_found" }
+
+    const roundNumber = game.currentRound
+    const round = game.rounds?.[roundNumber]
+    if (!round) return { error: "round_not_found" }
+
+    const selectedEntries = round.playerSelectedCards ?? []
+    const updatedPlayerIds = new Set()
+
+    for (const entry of selectedEntries) {
+        const player = game.players?.find((p) => p.id === entry.playerId)
+        if (!player) continue
+        const card = entry.card
+        if (!card) continue
+
+        player.white_cards = (player.white_cards ?? []).filter(
+            (c) => !(c.pack === card.pack && c.card_id === card.card_id)
+        )
+        updatedPlayerIds.add(player.id)
+    }
+
+    games.set(lobbyId, game)
+
+    for (const playerId of updatedPlayerIds) {
+        await givePlayerOneWhiteCard({ games, lobbyId, playerId, uniquePerGame, maxHandSize: handSize })
+    }
+
+    const updatedGame = games.get(lobbyId)
+    return { game: updatedGame, round, updatedPlayerIds: [...updatedPlayerIds] }
+}
+
+export const selectCzarCard = ({ games, lobbyId, playerId, entry }) => {
+    const game = games.get(lobbyId)
+    if (!game) return { error: "not_found" }
+
+    if (game.phase !== 'czar') return { error: "invalid_phase" }
+
+    const roundNumber = game.currentRound
+    const round = game.rounds?.[roundNumber]
+    if (!round) return { error: "round_not_found" }
+
+    if (round.cardSelector?.player !== playerId) return { error: "not_card_selector" }
+
+    const pool = round.playerSelectedCards ?? []
+    const match = pool.find(
+        (p) => p.playerId === entry?.playerId
+            && p.card?.pack === entry?.card?.pack
+            && p.card?.card_id === entry?.card?.card_id
+    )
+    if (!match) return { error: "card_not_found" }
+
+    round.cardSelector = round.cardSelector ?? { player: null, selectedCard: {} }
+    round.cardSelector.selectedCard = match
+
+    game.rounds[roundNumber] = round
+    games.set(lobbyId, game)
+
+    return { game, round, selected: match }
 }

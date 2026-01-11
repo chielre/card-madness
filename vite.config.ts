@@ -8,6 +8,11 @@ export default defineConfig(({ mode }) => {
 
     return {
         plugins: [vue(), tailwindcss()],
+        define: {
+            'import.meta.env.STAGE': JSON.stringify(env.STAGE),
+            'import.meta.env.DEV_PLAY_INTRO': JSON.stringify(env.DEV_PLAY_INTRO),
+            'import.meta.env.DEV_PHASE_BUTTONS': JSON.stringify(env.DEV_PHASE_BUTTONS),
+        },
 
         resolve: {
             alias: {
