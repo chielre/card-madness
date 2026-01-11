@@ -8,6 +8,7 @@ export default defineConfig(({ mode }) => {
 
     return {
         plugins: [vue(), tailwindcss()],
+        base: '/card-madness/',
         define: {
             'import.meta.env.STAGE': JSON.stringify(env.STAGE),
             'import.meta.env.DEV_PLAY_INTRO': JSON.stringify(env.DEV_PLAY_INTRO),
