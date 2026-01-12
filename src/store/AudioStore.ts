@@ -30,7 +30,10 @@ let swooshHowl: Howl | null = null
 
 const effectHowls: Record<string, Howl> = {}
 const effectBaseVolumes = new Map<string, number>()
+const musicEffectHowls: Record<string, Howl> = {}
+const musicEffectBaseVolumes = new Map<string, number>()
 let oneShotBaseVolume = 0.5
+let musicOneShotBaseVolume = 0.5
 
 const swooshFiles = import.meta.glob('@/assets/audio/effects/swoosh-*.mp3', {
   eager: true,
@@ -52,6 +55,8 @@ function pickRandom<T>(arr: T[]) {
 const customHowls: Record<string, Howl> = {}
 let oneShotHowl: Howl | null = null
 let oneShotId: string | null = null
+let musicOneShotHowl: Howl | null = null
+let musicOneShotId: string | null = null
 
 const MUSIC_BASE_VOLUME = 0.5
 const SFX_BASE_VOLUME = 0.7
@@ -70,6 +75,10 @@ function getMusicVolume(enabled: boolean, master: number) {
 }
 
 function getSfxVolume(enabled: boolean, master: number, base: number) {
+  return enabled ? base * master : 0
+}
+
+function getMusicEffectVolume(enabled: boolean, master: number, base: number) {
   return enabled ? base * master : 0
 }
 
@@ -126,6 +135,8 @@ function stopMusicHowls() {
   if (gameRoundHowl2) fadeOutHowl(gameRoundHowl2)
 
   Object.values(customHowls).forEach((h) => fadeOutHowl(h))
+  Object.values(musicEffectHowls).forEach((h) => fadeOutHowl(h))
+  if (musicOneShotHowl) fadeOutHowl(musicOneShotHowl)
 }
 
 function stopSfxHowls() {
@@ -145,6 +156,13 @@ function applyMusicVolumes(enabled: boolean, master: number) {
   if (gameRoundHowl2) gameRoundHowl2.volume(volume)
 
   Object.values(customHowls).forEach((h) => h.volume(volume))
+  Object.entries(musicEffectHowls).forEach(([key, howl]) => {
+    const base = musicEffectBaseVolumes.get(key) ?? MUSIC_BASE_VOLUME
+    howl.volume(getMusicEffectVolume(enabled, master, base))
+  })
+  if (musicOneShotHowl) {
+    musicOneShotHowl.volume(getMusicEffectVolume(enabled, master, musicOneShotBaseVolume))
+  }
 }
 
 function applySfxVolumes(enabled: boolean, master: number) {
@@ -254,6 +272,15 @@ export const useAudioStore = defineStore('audio', {
       }
       return effectHowls[key]
     },
+    ensureMusicEffect(key: string, src: string, volume = 0.7) {
+      musicEffectBaseVolumes.set(key, volume)
+      if (!musicEffectHowls[key]) {
+        musicEffectHowls[key] = new Howl({ src: [src], loop: false, volume: getMusicEffectVolume(this.musicEnabled, this.musicMaster, volume) })
+      } else {
+        musicEffectHowls[key].volume(getMusicEffectVolume(this.musicEnabled, this.musicMaster, volume))
+      }
+      return musicEffectHowls[key]
+    },
     ensureOneShot(id: string, src: string) {
       if (oneShotHowl && oneShotId === id) return oneShotHowl
       oneShotHowl?.unload()
@@ -261,6 +288,14 @@ export const useAudioStore = defineStore('audio', {
       oneShotHowl = new Howl({ src: [src], loop: false, volume: getSfxVolume(this.sfxEnabled, this.sfxMaster, oneShotBaseVolume) })
       oneShotId = id
       return oneShotHowl
+    },
+    ensureMusicOneShot(id: string, src: string) {
+      if (musicOneShotHowl && musicOneShotId === id) return musicOneShotHowl
+      musicOneShotHowl?.unload()
+      musicOneShotBaseVolume = 0.5
+      musicOneShotHowl = new Howl({ src: [src], loop: false, volume: getMusicEffectVolume(this.musicEnabled, this.musicMaster, musicOneShotBaseVolume) })
+      musicOneShotId = id
+      return musicOneShotHowl
     },
 
     readyMain() { return waitForLoad(this.ensureMain()) },
@@ -274,23 +309,24 @@ export const useAudioStore = defineStore('audio', {
 
     readyCustom(key: string, src: string) { return waitForLoad(this.ensureCustom(key, src)) },
     readyEffect(key: string, src: string, volume = 0.7) { return waitForLoad(this.ensureEffect(key, src, volume)) },
+    readyMusicEffect(key: string, src: string, volume = 0.7) { return waitForLoad(this.ensureMusicEffect(key, src, volume)) },
 
     readyCountDown(seconds: Seconds) {
       const src = seconds === '52' ? countDown52 : countDown33
-      return this.readyEffect(`countdown_${seconds}`, src)
+      return this.readyMusicEffect(`countdown_${seconds}`, src)
     },
     readyCountDown1m() {
-      return this.readyEffect('countdown_1m', countDown1m)
+      return this.readyMusicEffect('countdown_1m', countDown1m)
     },
 
     readyCustomOnce(key: string, src: string) {
-      return waitForLoad(this.ensureOneShot(`once:${key}`, src))
+      return waitForLoad(this.ensureMusicOneShot(`once:${key}`, src))
     },
     readyWrap() {
-      return this.readyEffect('wrap', wrapMusic)
+      return this.readyMusicEffect('wrap', wrapMusic)
     },
     readyWrapCzar() {
-      return this.readyEffect('wrap_czar', wrapCzarMusic)
+      return this.readyMusicEffect('wrap_czar', wrapCzarMusic)
     },
 
     stopAll() {
@@ -376,24 +412,24 @@ export const useAudioStore = defineStore('audio', {
     },
 
     async playCountDown(seconds: Seconds) {
-      if (!this.sfxEnabled) return
+      if (!this.musicEnabled) return
       const track = `once:countdown_${seconds}`
       if (this.current === track) return
 
       this.stopAll()
       const src = seconds === '52' ? countDown52 : countDown33
-      await this.readyEffect(`countdown_${seconds}`, src)
-      this.ensureEffect(`countdown_${seconds}`, src).play()
+      await this.readyMusicEffect(`countdown_${seconds}`, src)
+      this.ensureMusicEffect(`countdown_${seconds}`, src).play()
       this.current = track
     },
     async playCountDown1m() {
-      if (!this.sfxEnabled) return
+      if (!this.musicEnabled) return
       const track = 'once:countdown_1m'
       if (this.current === track) return
 
       this.stopAll()
       await this.readyCountDown1m()
-      this.ensureEffect('countdown_1m', countDown1m).play()
+      this.ensureMusicEffect('countdown_1m', countDown1m).play()
       this.current = track
     },
 
@@ -415,36 +451,36 @@ export const useAudioStore = defineStore('audio', {
     },
 
     async playCustomOnce(key: string, src: string) {
-      if (!this.sfxEnabled) return
+      if (!this.musicEnabled) return
       const track = `once:${key}`
       if (this.current === track) return
 
       this.stopAll()
       await this.readyCustomOnce(key, src)
 
-      oneShotHowl!.play()
+      musicOneShotHowl!.play()
       this.current = track
     },
 
     async playWrapOnce() {
-      if (!this.sfxEnabled) return
+      if (!this.musicEnabled) return
       const track = 'once:wrap'
       if (this.current === track) return
 
       this.stopAll()
       await this.readyWrap()
-      this.ensureEffect('wrap', wrapMusic).play()
+      this.ensureMusicEffect('wrap', wrapMusic).play()
       this.current = track
     },
 
     async playWrapCzarOnce() {
-      if (!this.sfxEnabled) return
+      if (!this.musicEnabled) return
       const track = 'once:wrap_czar'
       if (this.current === track) return
 
       this.stopAll()
       await this.readyWrapCzar()
-      this.ensureEffect('wrap_czar', wrapCzarMusic).play()
+      this.ensureMusicEffect('wrap_czar', wrapCzarMusic).play()
       this.current = track
     },
 
@@ -471,11 +507,11 @@ export const useAudioStore = defineStore('audio', {
       howls.add(this.ensureGameRound2())
 
       // effects
-      howls.add(this.ensureEffect('countdown_52', countDown52))
-      howls.add(this.ensureEffect('countdown_33', countDown33))
-      howls.add(this.ensureEffect('countdown_1m', countDown1m))
-      howls.add(this.ensureEffect('wrap', wrapMusic))
-      howls.add(this.ensureEffect('wrap_czar', wrapCzarMusic))
+      howls.add(this.ensureMusicEffect('countdown_52', countDown52))
+      howls.add(this.ensureMusicEffect('countdown_33', countDown33))
+      howls.add(this.ensureMusicEffect('countdown_1m', countDown1m))
+      howls.add(this.ensureMusicEffect('wrap', wrapMusic))
+      howls.add(this.ensureMusicEffect('wrap_czar', wrapCzarMusic))
 
       swooshUrls.forEach((src) => {
         howls.add(this.ensureEffect(`swoosh:${src}`, src))
