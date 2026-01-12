@@ -23,13 +23,14 @@ So far, I haven’t found a good, modern, and easy way to play Cards Against Hum
 
 ## Planned features
 
-- Create and join lobbies without registration
-- Pre-configured card packs
-- Lobby settings (rounds, white cards etc.)
-- Personalised cards based on players
-- Multiplayer via websockets
-- Scoreboard and round results
-- Card czar selection and audience selection
+- Create and join lobbies without registration ✅
+- Pre-configured card packs ✅
+- Lobby settings (rounds, white cards etc.) ❌
+- Personalised cards based on players ✅
+- Multiplayer via websockets ✅
+- Scoreboard and round results ❌
+- Card czar selection ✅
+- audience selection ❌
 
 
 
