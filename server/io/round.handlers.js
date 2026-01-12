@@ -34,7 +34,11 @@ export const registerRoundsHandlers = ({ io, socket, games, socketRooms }) => {
         const res = selectCzarCard({ games, lobbyId, playerId: socket.id, entry })
         if (res.error) return cb?.({ error: res.error })
 
-        io.to(lobbyId).emit('board:round-updated', { currentRound: res.round })
+        const updatedGame = games.get(lobbyId)
+        io.to(lobbyId).emit('board:round-updated', {
+            currentRound: res.round,
+            roundNumber: updatedGame?.currentRound ?? null,
+        })
         const finalizeRes = await finalizeRound({ games, lobbyId })
         if (!finalizeRes?.error && finalizeRes?.game?.players?.length) {
             finalizeRes.game.players.forEach((player) => {

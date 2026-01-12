@@ -15,6 +15,7 @@ type Player = {
     name: string,
     white_cards: WhiteCard[],
     ready?: boolean
+    eligibleFromRound?: number
 }
 
 type RoundState = {
@@ -32,6 +33,13 @@ type Game = {
     players: Player[],
     phase: string,
     selectedPacks: [],
+    currentRound?: RoundState | null,
+    currentRoundNumber?: number,
+    phaseTimerPhase?: string,
+    phaseTimerDurationMs?: number,
+    phaseTimerExpiresAt?: number,
+    roundTimerDurationMs?: number,
+    roundTimerExpiresAt?: number,
     error?: string
 }
 
@@ -52,6 +60,7 @@ export const useLobbyStore = defineStore('lobby', {
         phaseTimerDurationMs: 0,
         phaseTimerExpiresAt: 0,
         currentRound: null as RoundState | null,
+        currentRoundNumber: 0,
         roundStartedTick: 0,
         roundTimerDurationMs: 0,
         roundTimerExpiresAt: 0,
@@ -62,7 +71,7 @@ export const useLobbyStore = defineStore('lobby', {
         pendingUnselectedCardTick: 0,
         pendingCzarSelectedEntry: null as { playerId: string; card: WhiteCard } | null,
         pendingCzarSelectedTick: 0,
-        lastSelectedCard: null as { playerId: string; card?: WhiteCard | null; action: 'selected' | 'unselected' } | null,
+        lastSelectedCard: null as { playerId: string; card?: WhiteCard | null; action: 'selected' | 'unselected'; sync?: boolean } | null,
         selectedCardAnimTick: 0,
         selectionLockDurationMs: 10000,
         selectionLockExpiresAt: 0,
@@ -106,17 +115,44 @@ export const useLobbyStore = defineStore('lobby', {
             this.selectedPacks = selectedPacks
         },
 
+        applyServerState(res: Game) {
+            if (!res) return
+            this.lobbyId = res.lobbyId ?? this.lobbyId
+            this.players = (res.players ?? []).map(normalizePlayer)
+            this.selectedPacks = res.selectedPacks ?? []
+            this.host = res.host ?? ''
+            this.phase = res.phase ?? this.phase
+
+            if (typeof res.currentRoundNumber === 'number') {
+                this.currentRoundNumber = res.currentRoundNumber
+            }
+            if (res.currentRound !== undefined) {
+                this.currentRound = res.currentRound ?? null
+            }
+
+            if (res.phaseTimerPhase !== undefined || res.phaseTimerDurationMs !== undefined || res.phaseTimerExpiresAt !== undefined) {
+                this.setPhaseTimer(res.phaseTimerPhase, res.phaseTimerDurationMs, res.phaseTimerExpiresAt)
+            }
+            if (res.roundTimerDurationMs !== undefined || res.roundTimerExpiresAt !== undefined) {
+                this.setRoundTimer(res.roundTimerDurationMs, res.roundTimerExpiresAt)
+            }
+
+            if (
+                this.roundStartedTick === 0
+                && this.currentRoundNumber > 0
+                && ['board', 'czar', 'czar-result'].includes(this.phase)
+            ) {
+                this.markRoundStarted()
+            }
+        },
+
         async joinLobby(code: string, name: string, language?: string) {
 
             const conn = useConnectionStore()
             const res = await conn.emitWithAck<Game>('room:join', { lobbyId: code, name, language })
             if (res.error) return res
 
-            this.lobbyId = res.lobbyId
-            this.players = (res.players ?? []).map(normalizePlayer)
-            this.selectedPacks = res.selectedPacks ?? []
-            this.host = res.host ?? ''
-            this.phase = res.phase ?? ''
+            this.applyServerState(res)
 
 
             return res
@@ -128,11 +164,7 @@ export const useLobbyStore = defineStore('lobby', {
 
             if (res.error) return res
 
-            this.lobbyId = res.lobbyId
-            this.players = (res.players ?? []).map(normalizePlayer)
-            this.selectedPacks = res.selectedPacks ?? []
-            this.host = res.host ?? ''
-            this.phase = res.phase ?? 'lobby'
+            this.applyServerState(res)
 
             return res
         },
@@ -244,6 +276,14 @@ export const useLobbyStore = defineStore('lobby', {
             this.currentRound = round
         },
 
+        setCurrentRoundNumber(roundNumber?: number | null) {
+            if (typeof roundNumber === 'number') {
+                this.currentRoundNumber = roundNumber
+            } else if (roundNumber === null) {
+                this.currentRoundNumber = 0
+            }
+        },
+
         markRoundStarted() {
             this.roundStartedTick += 1
         },
@@ -290,7 +330,7 @@ export const useLobbyStore = defineStore('lobby', {
             this.pendingCzarSelectedEntry = null
         },
 
-        recordPlayerSelectedCard(payload: { playerId: string; card?: WhiteCard | null; selectionLockDurationMs?: number; selectionLockExpiresAt?: number }) {
+        recordPlayerSelectedCard(payload: { playerId: string; card?: WhiteCard | null; selectionLockDurationMs?: number; selectionLockExpiresAt?: number; sync?: boolean }) {
             if (this.currentRound) {
                 const list = this.currentRound.playerSelectedCards ?? []
                 const idx = list.findIndex((c) => c.playerId === payload.playerId)
@@ -304,7 +344,7 @@ export const useLobbyStore = defineStore('lobby', {
                 }
                 this.currentRound.playerSelectedCards = list
             }
-            this.lastSelectedCard = { playerId: payload.playerId, card: payload.card ?? null, action: 'selected' }
+            this.lastSelectedCard = { playerId: payload.playerId, card: payload.card ?? null, action: 'selected', sync: payload.sync }
             this.selectedCardAnimTick += 1
             if (typeof payload.selectionLockDurationMs === 'number') {
                 this.selectionLockDurationMs = payload.selectionLockDurationMs

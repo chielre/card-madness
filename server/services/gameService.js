@@ -29,7 +29,8 @@ export const createGame = ({ games, hostId, hostName, language }) => {
             name: normalizedHostName,
             ready: false,
             language: hostLanguage,
-            white_cards: []
+            white_cards: [],
+            eligibleFromRound: 1
         }],
         phase: 'lobby',
         currentRound: 0,
@@ -40,6 +41,19 @@ export const createGame = ({ games, hostId, hostName, language }) => {
     games.set(lobbyId, game)
     return game
 }
+
+const getEligibleFromRound = (game) => {
+    const activeRoundPhases = new Set(['board', 'czar', 'czar-result'])
+    const currentRound = Number(game?.currentRound) || 0
+    if (activeRoundPhases.has(game?.phase) && currentRound > 0) {
+        return currentRound + 1
+    }
+    return 1
+}
+
+const getPlayerEligibleFromRound = (player) => Number(player?.eligibleFromRound) || 1
+const isPlayerEligibleForRound = (player, roundNumber) =>
+    getPlayerEligibleFromRound(player) <= (Number(roundNumber) || 0)
 
 
 export const prepareGame = async ({ games, lobbyId }) => {
@@ -159,7 +173,8 @@ export const joinGame = ({ games, lobbyId, player }) => {
         ...player,
         name: normalizeName(player?.name),
         language: normalizeLanguage(player?.language),
-        white_cards: []
+        white_cards: [],
+        eligibleFromRound: getEligibleFromRound(game)
     }
 
     game.players.push(nextPlayer)
@@ -309,6 +324,9 @@ export const selectPlayerCard = ({ games, lobbyId, playerId, card }) => {
 
     const player = game.players?.find((p) => p.id === playerId)
     if (!player) return { error: "player_not_found" }
+    if (!isPlayerEligibleForRound(player, game.currentRound)) {
+        return { error: "player_waiting" }
+    }
 
     const roundNumber = game.currentRound
     const round = game.rounds?.[roundNumber]
@@ -354,6 +372,11 @@ export const unselectPlayerCard = ({ games, lobbyId, playerId, card }) => {
     const round = game.rounds?.[roundNumber]
     if (!round) return { error: "round_not_found" }
 
+    const player = game.players?.find((p) => p.id === playerId)
+    if (!player) return { error: "player_not_found" }
+    if (!isPlayerEligibleForRound(player, game.currentRound)) {
+        return { error: "player_waiting" }
+    }
 
     // should not be the czar
     if (round.cardSelector?.player === playerId) return { error: "card_selector_cannot_select" }
@@ -382,6 +405,11 @@ export const lockPlayerSelection = ({ games, lobbyId, playerId }) => {
     const round = game.rounds?.[roundNumber]
     if (!round) return { error: "round_not_found" }
 
+    const player = game.players?.find((p) => p.id === playerId)
+    if (!player) return { error: "player_not_found" }
+    if (!isPlayerEligibleForRound(player, game.currentRound)) {
+        return { error: "player_waiting" }
+    }
     // should not be the czar
     if (round.cardSelector?.player === playerId) return { error: "card_selector_cannot_select" }
 
@@ -404,7 +432,9 @@ export const areAllNonSelectorPlayersSelected = (game) => {
     if (!round) return false
 
     const selectorId = round.cardSelector?.player
-    const eligiblePlayers = (game.players ?? []).filter((p) => p.id !== selectorId)
+    const eligiblePlayers = (game.players ?? []).filter(
+        (p) => p.id !== selectorId && isPlayerEligibleForRound(p, game.currentRound)
+    )
     if (!eligiblePlayers.length) return false
 
     const selectedIds = new Set((round.playerSelectedCards ?? []).map((entry) => entry.playerId))
@@ -421,7 +451,9 @@ export const autoSelectMissingPlayerCards = ({ games, lobbyId }) => {
 
     const selectorId = round.cardSelector?.player
     const selectedIds = new Set((round.playerSelectedCards ?? []).map((entry) => entry.playerId))
-    const missingPlayers = (game.players ?? []).filter((p) => p.id !== selectorId && !selectedIds.has(p.id))
+    const missingPlayers = (game.players ?? []).filter(
+        (p) => p.id !== selectorId && !selectedIds.has(p.id) && isPlayerEligibleForRound(p, game.currentRound)
+    )
 
     if (!missingPlayers.length) return { game, round, added: [] }
 
@@ -500,6 +532,41 @@ export const finalizeRound = async ({ games, lobbyId, handSize = 5, uniquePerGam
 
     const updatedGame = games.get(lobbyId)
     return { game: updatedGame, round, updatedPlayerIds: [...updatedPlayerIds] }
+}
+
+export const givePlayerHand = async ({ games, lobbyId, playerId, handSize = 5, uniquePerGame = true }) => {
+    const game = games.get(lobbyId)
+    if (!game) return { error: "not_found" }
+
+    game.players = game.players ?? []
+    const player = game.players.find((p) => p.id === playerId)
+    if (!player) return { error: "player_not_found" }
+
+    player.white_cards = player.white_cards ?? []
+    if (player.white_cards.length >= handSize) {
+        return { game, player }
+    }
+
+    const poolRes = buildWhitePool(game)
+    if (poolRes.error) return poolRes
+    const { pool } = poolRes
+
+    const used = uniquePerGame ? buildUsedWhiteSet(game) : null
+
+    while (player.white_cards.length < handSize) {
+        const localUsed = new Set(player.white_cards.map(keyOf))
+        const candidates = pool.filter((c) =>
+            uniquePerGame ? !used.has(keyOf(c)) : !localUsed.has(keyOf(c))
+        )
+        if (!candidates.length) return { error: "not_enough_white_cards" }
+
+        const picked = candidates[rand(candidates.length)]
+        player.white_cards.push({ ...picked, name: randomPlayerLobbyName(game.players) })
+        if (uniquePerGame) used.add(keyOf(picked))
+    }
+
+    games.set(lobbyId, game)
+    return { game, player }
 }
 
 export const selectCzarCard = ({ games, lobbyId, playerId, entry }) => {

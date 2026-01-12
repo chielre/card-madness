@@ -1,10 +1,11 @@
-import { createGame, joinGame, leaveGame } from '../services/gameService.js'
+import { createGame, joinGame, leaveGame, givePlayerHand } from '../services/gameService.js'
 import { transitionPhase } from '../services/phaseService.js'
 import { startCzarPhase, startRoundFlow } from '../services/phaseFlowService.js'
 import { trackJoin, trackLeave } from '../services/socketRoomService.js'
 import { clearPhaseTimer, schedulePhaseTimer } from '../utils/phaseTimers.js'
 import { clearRoundTimer } from '../utils/roundTimers.js'
 import { PHASE_DEFAULT_DURATIONS } from '../config/phaseDurations.js'
+import { phaseTimers, roundTimers, selectionLockTimers } from '../state/store.js'
 
 export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
     socket.on('room:create', ({ hostName, language }, cb) => {
@@ -26,7 +27,7 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
         })
     })
 
-    socket.on('room:join', ({ lobbyId, name, language }, cb) => {
+    socket.on('room:join', async ({ lobbyId, name, language }, cb) => {
         const game = joinGame({
             games,
             lobbyId,
@@ -34,11 +35,49 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
         })
         if (!game) return cb?.({ error: 'not_found' })
 
+        if (!['lobby', 'starting'].includes(game.phase)) {
+            const dealRes = await givePlayerHand({ games, lobbyId, playerId: socket.id })
+            if (!dealRes?.error && dealRes?.player) {
+                socket.emit("room:player-cards-updated", { cards: dealRes.player.white_cards ?? [] })
+            }
+        }
+
         socket.join(lobbyId)
         trackJoin(socketRooms, socket.id, lobbyId)
 
         socket.to(lobbyId).emit('room:player-joined', { id: socket.id, name, ready: false, language })
-        cb?.({ lobbyId: lobbyId, phase: game.phase, host: game.host, players: game.players, selectedPacks: game.selectedPacks ?? [] })
+        const currentRoundNumber = Number(game.currentRound) || 0
+        const currentRound = currentRoundNumber ? game.rounds?.[currentRoundNumber] ?? null : null
+        const phaseTimer = phaseTimers.get(lobbyId)
+        const roundTimer = roundTimers.get(lobbyId)
+        cb?.({
+            lobbyId: lobbyId,
+            phase: game.phase,
+            host: game.host,
+            players: game.players,
+            selectedPacks: game.selectedPacks ?? [],
+            currentRound,
+            currentRoundNumber,
+            phaseTimerPhase: phaseTimer?.phase ?? '',
+            phaseTimerDurationMs: phaseTimer?.durationMs ?? 0,
+            phaseTimerExpiresAt: phaseTimer?.expiresAt ?? 0,
+            roundTimerDurationMs: roundTimer?.durationMs ?? 0,
+            roundTimerExpiresAt: roundTimer?.expiresAt ?? 0,
+        })
+
+        const lockMap = selectionLockTimers.get(lobbyId)
+        if (lockMap && currentRound?.playerSelectedCards?.length) {
+            lockMap.forEach((info, playerId) => {
+                const hasEntry = currentRound.playerSelectedCards?.some((entry) => entry.playerId === playerId)
+                if (!hasEntry) return
+                socket.emit('board:player-card-selected', {
+                    playerId,
+                    selectionLockDurationMs: info?.durationMs ?? 10000,
+                    selectionLockExpiresAt: info?.expiresAt ?? (Date.now() + 10000),
+                    sync: true,
+                })
+            })
+        }
     })
 
     socket.on('room:leave', ({ lobbyId }, cb) => {
@@ -62,7 +101,24 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
     socket.on('room:state', ({ lobbyId }, cb) => {
         const game = games.get(lobbyId)
         if (!game) return cb?.({ error: 'not_found' })
-        cb?.({ lobbyId: lobbyId, phase: game.phase, host: game.host, players: game.players, selectedPacks: game.selectedPacks ?? [] })
+        const currentRoundNumber = Number(game.currentRound) || 0
+        const currentRound = currentRoundNumber ? game.rounds?.[currentRoundNumber] ?? null : null
+        const phaseTimer = phaseTimers.get(lobbyId)
+        const roundTimer = roundTimers.get(lobbyId)
+        cb?.({
+            lobbyId: lobbyId,
+            phase: game.phase,
+            host: game.host,
+            players: game.players,
+            selectedPacks: game.selectedPacks ?? [],
+            currentRound,
+            currentRoundNumber,
+            phaseTimerPhase: phaseTimer?.phase ?? '',
+            phaseTimerDurationMs: phaseTimer?.durationMs ?? 0,
+            phaseTimerExpiresAt: phaseTimer?.expiresAt ?? 0,
+            roundTimerDurationMs: roundTimer?.durationMs ?? 0,
+            roundTimerExpiresAt: roundTimer?.expiresAt ?? 0,
+        })
     })
 
     socket.on('room:phase-set', ({ lobbyId, phase, durationMs, nextPhase }, cb) => {

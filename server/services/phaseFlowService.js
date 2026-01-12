@@ -89,7 +89,10 @@ export const startRoundFlow = ({ io, games, lobbyId, round, durationMs = 90000 }
 
     const updatedGame = games.get(lobbyId)
     const updatedRound = updatedGame?.rounds?.[updatedGame?.currentRound]
-    io.to(lobbyId).emit('board:round-updated', { currentRound: updatedRound })
+    io.to(lobbyId).emit('board:round-updated', {
+        currentRound: updatedRound,
+        roundNumber: updatedGame?.currentRound ?? null,
+    })
 
     const freshGame = games.get(lobbyId)
     const startedRound = freshGame?.rounds?.[freshGame?.currentRound]
@@ -115,7 +118,12 @@ export const startRoundFlow = ({ io, games, lobbyId, round, durationMs = 90000 }
             waitForSelectionLocks()
         }
     })
-    io.to(lobbyId).emit('board:round-started', { currentRound: startedRound, durationMs, expiresAt })
+    io.to(lobbyId).emit('board:round-started', {
+        currentRound: startedRound,
+        roundNumber: freshGame.currentRound,
+        durationMs,
+        expiresAt,
+    })
 
     return { game: freshGame, round: startedRound }
 }
@@ -148,7 +156,10 @@ export const startCzarPhase = ({ io, games, lobbyId, round, durationMs }) => {
     roundState.playerSelectedCards = cards
     afterAutoGame.rounds[afterAutoGame.currentRound] = roundState
     games.set(lobbyId, afterAutoGame)
-    io.to(lobbyId).emit('board:round-updated', { currentRound: roundState })
+    io.to(lobbyId).emit('board:round-updated', {
+        currentRound: roundState,
+        roundNumber: afterAutoGame.currentRound,
+    })
 
     const phaseTimer = schedulePhaseTimer({
         io,

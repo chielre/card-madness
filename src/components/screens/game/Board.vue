@@ -44,11 +44,20 @@ const czarNextRoundButton = ref<HTMLElement | null>(null)
 /* ---------- computed ---------- */
 const currentPlayerCards = computed(() => lobby.getCurrentPlayerCards())
 const isCurrentPlayerCardSelector = computed(() => lobby.getCurrentPlayerIsCardSelector())
+const currentPlayer = computed(() => lobby.getCurrentPlayer())
 const isBoardPhase = computed(() => lobby.phase === "board")
 const isCzarPhase = computed(() => lobby.phase === "czar")
 const isCzarResultPhase = computed(() => lobby.phase === "czar-result")
 const isRevealPhase = computed(() => isCzarPhase.value || isCzarResultPhase.value)
 const isRoundActive = computed(() => isBoardPhase.value && lobby.roundStartedTick > lobby.roundTimeoutTick)
+const isWaitingForRound = computed(() => {
+    const player = currentPlayer.value
+    if (!player) return false
+    if (!lobby.currentRoundNumber) return false
+    if (!["board", "czar", "czar-result"].includes(lobby.phase)) return false
+    const eligibleFromRound = Number(player.eligibleFromRound) || 1
+    return eligibleFromRound > lobby.currentRoundNumber
+})
 
 const canCzarSelect = computed(() => isCzarPhase.value && isCurrentPlayerCardSelector.value)
 const canStartNextRound = computed(() => isCzarResultPhase.value && isCurrentPlayerCardSelector.value)
@@ -1437,6 +1446,7 @@ watch(
         const cardText = lobby.lastSelectedCard?.card?.text ?? ""
         const action = (lobby.lastSelectedCard?.action ?? "selected") as "selected" | "unselected"
         const playerId = lobby.lastSelectedCard?.playerId
+        const isSync = !!lobby.lastSelectedCard?.sync
         if (playerId) {
             if (action === "selected" && lobby.phase === "board") {
                 const durationMs = lobby.selectionLockDurationMs || CARD_LOCK_WINDOW_MS
@@ -1446,6 +1456,7 @@ watch(
             }
             if (action === "unselected") clearPendingSelection(playerId)
         }
+        if (isSync) return
         if (action === "selected") nextTick(() => spawnSelectedCardAnim(cardText, action, playerId))
         else spawnSelectedCardAnim(cardText, action, playerId)
     }
@@ -1473,6 +1484,10 @@ onMounted(() => {
 
     sortable.on("drag:start", (evt: any) => {
         if (!isBoardPhase.value || lobby.getCurrentPlayerIsCardSelector()) {
+            evt.cancel()
+            return
+        }
+        if (isWaitingForRound.value) {
             evt.cancel()
             return
         }
@@ -1651,7 +1666,7 @@ defineExpose({ runIntroAnimation })
                 </div>
 
                 <div ref="boardGridRef" class="-ml-6 bg-[#2b0246] grid grid-cols-5 gap-8 w-3xl border-4 backdrop-blur-sm rounded-xl border-black p-6 transition-all" style="position: relative; perspective: 1200px">
-                    <div v-show="isRoundActive && !isCurrentPlayerCardSelector" class="play-zone">
+                    <div v-show="isRoundActive && !isCurrentPlayerCardSelector && !isWaitingForRound" class="play-zone">
                         <div ref="playRef" class="play-slot">
                             <div class="madness-card card-white card-responsive play-slot-mirror" aria-hidden="true"></div>
                             <div class="play-placeholder border-3 border-dashed border-white/60 rounded-xl text-white/70 px-6 py-8 text-center text-sm">
@@ -1675,6 +1690,7 @@ defineExpose({ runIntroAnimation })
                     <div v-for="(white_card, index) in currentPlayerCards" :key="`${white_card.pack}-${white_card.card_id}-${index}`" class="madness-card card-white card-sm draggable-card" :data-pack="white_card.pack" :data-card-id="white_card.card_id" v-html="white_card.text"></div>
 
                     <div v-if="isCurrentPlayerCardSelector" class="hand-czar-banner">Jij bent de Card Czar</div>
+                    <div v-if="isWaitingForRound" class="hand-czar-banner">Je doet mee vanaf de volgende ronde</div>
                 </div>
             </div>
 

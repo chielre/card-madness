@@ -155,12 +155,16 @@ const handleGamePhaseTimeout = (payload: { phase: string }) => {
 Board socket events
 */
 
-const handleBoardRoundUpdated = (payload: { currentRound: any }) => {
+const handleBoardRoundUpdated = (payload: { currentRound: any; roundNumber?: number | null }) => {
     lobby.setCurrentRound(payload.currentRound)
+    if (payload.roundNumber === null) lobby.setCurrentRoundNumber(null)
+    else if (typeof payload.roundNumber === 'number') lobby.setCurrentRoundNumber(payload.roundNumber)
 }
 
-const handleBoardRoundStarted = (payload: { currentRound: any; durationMs?: number; expiresAt?: number }) => {
+const handleBoardRoundStarted = (payload: { currentRound: any; roundNumber?: number | null; durationMs?: number; expiresAt?: number }) => {
     lobby.setCurrentRound(payload.currentRound)
+    if (payload.roundNumber === null) lobby.setCurrentRoundNumber(null)
+    else if (typeof payload.roundNumber === 'number') lobby.setCurrentRoundNumber(payload.roundNumber)
     lobby.setRoundTimer(payload.durationMs, payload.expiresAt)
     lobby.markRoundStarted()
     audio.playRoundLoop()
@@ -174,7 +178,7 @@ const handleBoardRoundTimeout = (payload: { round: string }) => {
 
 }
 
-const handleBoardPlayerCardSelected = (payload: { playerId: string; card?: any }) => {
+const handleBoardPlayerCardSelected = (payload: { playerId: string; card?: any; sync?: boolean }) => {
     lobby.recordPlayerSelectedCard(payload)
 }
 
