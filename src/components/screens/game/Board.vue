@@ -10,6 +10,7 @@ import PersonIcon from "vue-material-design-icons/Account.vue"
 import { useLobbyStore } from "@/store/LobbyStore"
 import { useConnectionStore } from "@/store/ConnectionStore"
 import { useAudioStore } from "@/store/AudioStore"
+import { useUiStore } from '@/store/UiStore'
 
 import CountdownTimer from "../../../components/CountdownTimer.vue"
 import BaseButton from "../../../components/ui/BaseButton.vue"
@@ -19,6 +20,8 @@ gsap.registerPlugin(CustomEase)
 const lobby = useLobbyStore()
 const audioStore = useAudioStore()
 const connection = useConnectionStore()
+const ui = useUiStore()
+
 
 /* ---------- refs ---------- */
 const timerRef = ref<InstanceType<typeof CountdownTimer> | null>(null)
@@ -1604,18 +1607,18 @@ defineExpose({ runIntroAnimation })
 
         <div>
             <!-- timer -->
-            <div class="absolute top-0 w-screen left-[50%] translate-x-[-50%] flex justify-between z-30">
+            <div class="absolute top-0 w-screen px-8 left-[50%] translate-x-[-50%] flex justify-between z-30">
                 <div class="p-4 flex-1 flex items-center">
-                    <img class="logo" width="150" src="../../../assets/images/logo.png" alt="" />
+                    <img class="" width="150" src="../../../assets/images/logo.png" alt="" />
                 </div>
 
                 <div ref="timerWrapRef" class="bg-[#2b0246] px-16 py-4 rounded-b-4xl border-2 border-black border-t-0">
                     <CountdownTimer ref="timerRef" :initial-seconds="240" :auto-start="false" :mode="timerMode" />
                 </div>
 
-                <div class="p-4 flex-1 flex items-center justify-end gap-3">
-                    <BaseButton size="md" icon="Music"></BaseButton>
-                    <BaseButton size="md" icon="Logout"></BaseButton>
+                <div class="p-4 flex-1 flex items-center justify-end gap-4">
+                    <BaseButton size="md" color="pink" @click="ui.openSettings" icon="Cog"></BaseButton>
+                    <BaseButton size="md" color="pink" icon="Logout"></BaseButton>
                 </div>
             </div>
 
@@ -1705,7 +1708,7 @@ defineExpose({ runIntroAnimation })
                 <BaseButton size="lg" @click="onNextRoundClick">Volgende ronde</BaseButton>
             </div>
 
-            <div v-if="showDebugPhaseButtons" class="fixed top-6 right-6 z-[90] flex flex-col gap-3 pointer-events-auto">
+            <div v-if="showDebugPhaseButtons" class="fixed bottom-6 right-6 z-[90] flex flex-col gap-3 pointer-events-auto">
                 <BaseButton size="md" @click="onDebugNextPhase">Debug: Next phase</BaseButton>
                 <BaseButton size="md" @click="onDebugNextRound" :disabled="!isCzarResultPhase">Debug: Next round</BaseButton>
             </div>

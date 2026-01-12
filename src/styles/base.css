@@ -503,6 +503,96 @@ body {
     transition: transform .15s cubic-bezier(0.959, 0.261, 0.323, 0.796), box-shadow .15s cubic-bezier(0.959, 0.261, 0.323, 0.796);
 }
 
+.btn-animated.btn-pink {
+    background: var(--color-pink-600);
+    box-shadow:
+        0 10px 0 var(--color-pink-900),
+        0 8px 6px --alpha(var(--color-pink-950) / 80%),
+        inset 0 -1px 3px 1px --alpha(var(--color-pink-100) / 40%);
+}
+
+.btn-animated:hover.btn-pink {
+    box-shadow:
+        0 7px 0 var(--color-pink-900),
+        0 8px 6px --alpha(var(--color-pink-950) / 80%),
+        inset 0 -1px 3px 1px --alpha(var(--color-pink-100) / 40%);
+}
+
+.btn-animated:active.btn-pink {
+    box-shadow:
+        0 1px 0 var(--color-pink-900),
+        0 8px 6px --alpha(var(--color-pink-950) / 80%),
+        inset 0 -1px 3px 1px --alpha(var(--color-pink-100) / 40%);
+}
+
+.btn-animated.btn-blue {
+    background: var(--color-blue-600);
+    box-shadow:
+        0 10px 0 var(--color-blue-900),
+        0 8px 6px --alpha(var(--color-blue-950) / 80%),
+        inset 0 -1px 3px 1px --alpha(var(--color-blue-100) / 40%);
+}
+
+.btn-animated:hover.btn-blue {
+    box-shadow:
+        0 7px 0 var(--color-blue-900),
+        0 8px 6px --alpha(var(--color-blue-950) / 80%),
+        inset 0 -1px 3px 1px --alpha(var(--color-blue-100) / 40%);
+}
+
+.btn-animated:active.btn-blue {
+    box-shadow:
+        0 1px 0 var(--color-blue-900),
+        0 8px 6px --alpha(var(--color-blue-950) / 80%),
+        inset 0 -1px 3px 1px --alpha(var(--color-blue-100) / 40%);
+}
+
+.btn-animated.btn-green {
+    background: var(--color-green-600);
+    box-shadow:
+        0 10px 0 var(--color-green-900),
+        0 8px 6px --alpha(var(--color-green-950) / 80%),
+        inset 0 -1px 3px 1px --alpha(var(--color-blue-100) / 40%);
+}
+
+.btn-animated:hover.btn-green {
+    box-shadow:
+        0 7px 0 var(--color-green-900),
+        0 8px 6px --alpha(var(--color-green-950) / 80%),
+        inset 0 -1px 3px 1px --alpha(var(--color-green-100) / 40%);
+}
+
+.btn-animated:active.btn-green {
+    box-shadow:
+        0 1px 0 var(--color-green-900),
+        0 8px 6px --alpha(var(--color-green-950) / 80%),
+        inset 0 -1px 3px 1px --alpha(var(--color-green-100) / 40%);
+}
+
+
+.btn-animated.btn-black {
+    background: var(--color-gray-900);
+    color: #fff;
+    box-shadow:
+        0 10px 0 var(--color-black),
+        0 8px 6px --alpha(var(--color-black) / 20%),
+        inset 0 -1px 3px 1px --alpha(var(--color-gray-600) / 40%);
+}
+
+.btn-animated:hover.btn-black {
+    box-shadow:
+        0 7px 0 var(--color-black),
+        0 8px 6px --alpha(var(--color-black) / 20%),
+        inset 0 -1px 3px 1px --alpha(var(--color-gray-600) / 40%);
+}
+
+.btn-animated:active.btn-black {
+    box-shadow:
+        0 1px 0 var(--color-black),
+        0 8px 6px --alpha(var(--color-black) / 20%),
+        inset 0 -1px 3px 1px --alpha(var(--color-gray-600) / 40%);
+}
+
 .btn-animated:hover {
     transform: translateY(3px);
     box-shadow:
@@ -517,4 +607,38 @@ body {
         0 1px 0 #1d042c,
         0 3px 4px rgba(0, 0, 0, .25),
         inset 0 -1px 3px 1px rgba(255, 255, 255, 0.1);
+}
+
+.btn-icon-only {
+    padding: 0 !important;
+    aspect-ratio: 1 / 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-sm.btn-icon-only {
+    width: 2.5rem;
+    height: 2.5rem;
+
+}
+
+.btn-md.btn-icon-only {
+    width: 3.25rem;
+    height: 3.25rem;
+
+}
+
+.btn-lg.btn-icon-only {
+    width: 4rem;
+    height: 4rem;
+
+
+}
+
+.btn-icon-only svg {
+    width: 1.3rem;
+    height: 1.3rem;
+
+
 }

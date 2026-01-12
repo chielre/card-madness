@@ -4,8 +4,11 @@ import { useRoute } from "vue-router";
 import { useConnectionStore } from '@/store/ConnectionStore'
 import { useAudioStore } from '@/store/AudioStore'
 import { useLobbyStore } from '@/store/LobbyStore'
+import { useUiStore } from '@/store/UiStore'
 
 import BaseButton from '@/components/ui/BaseButton.vue'
+import SettingsModal from '@/components/modals/SettingsModal.vue'
+import ConfirmModal from '@/components/modals/ConfirmModal.vue'
 
 import MenuIcon from 'vue-material-design-icons/Menu.vue';
 
@@ -15,6 +18,7 @@ import ConnectionError from '@/pages/ConnectionError.vue'
 const connection = useConnectionStore()
 const audio = useAudioStore()
 const lobby = useLobbyStore()
+const ui = useUiStore()
 
 const isConnecting = computed(() => connection.isConnecting)
 const isConnected = computed(() => connection.isConnected)
@@ -91,10 +95,7 @@ onMounted(() => {
                     </BaseButton>
                     <div v-if="isPreloadingAudio" class="w-80">
                         <div class="h-3 rounded-full border-2 border-black bg-white overflow-hidden">
-                            <div
-                                class="h-full bg-black transition-all"
-                                :style="{ width: `${Math.round((preloadProgress / preloadTotal) * 100)}%` }"
-                            ></div>
+                            <div class="h-full bg-black transition-all" :style="{ width: `${Math.round((preloadProgress / preloadTotal) * 100)}%` }"></div>
                         </div>
                         <div class="mt-2 text-center text-white font-bold">
                             {{ Math.round((preloadProgress / preloadTotal) * 100) }}%
@@ -107,6 +108,9 @@ onMounted(() => {
 
     <main v-else class="flex-1 min-h-screen overflow-hidden">
         <RouterView />
+        <SettingsModal />
+        <ConfirmModal />
+
     </main>
 
 
