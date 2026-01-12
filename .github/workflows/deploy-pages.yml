@@ -36,7 +36,8 @@ jobs:
         env: 
           VITE_WS_SERVER_URL: ${{ secrets.SERVER_WS_URL }}
           
-
+      - name: SPA fallback
+        run: cp dist/index.html dist/404.html
       - name: Verify dist
         run: |
           set -eux
