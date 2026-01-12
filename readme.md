@@ -32,6 +32,11 @@ So far, I haven’t found a good, modern, and easy way to play Cards Against Hum
 - Card czar selection ✅
 - audience selection ❌
 
+## Animated with [GSAP](https://gsap.com/)
+CardMadness uses GSAP to bring the game to life with fast, unexpected micro-animations, smooth phase transitions, responsive card interactions, and synced audio cues, all built purely with HTML, TypeScript, and CSS and running entirely in the browser to create a playful, high-energy Cards Against Humanity style experience. (Sounds catchy right?)
+<p align="center"><img src="https://chielreijnen.nl/cardmadness/czar-result.gif" alt="Logo"></p>
+
+
 
 
 ## Installation on Windows
