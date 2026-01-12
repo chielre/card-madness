@@ -182,6 +182,10 @@ const handleBoardPlayerCardUnselected = (payload: { playerId: string; card?: any
     lobby.recordPlayerUnselectedCard(payload)
 }
 
+const handleBoardPlayerCardLocked = (payload: { playerId: string }) => {
+    lobby.recordPlayerCardLocked(payload)
+}
+
 
 /*-----------------------------------
 Player socket updates
@@ -211,6 +215,7 @@ onMounted(async () => {
     socket.on('board:round-timeout', handleBoardRoundTimeout)
     socket.on('board:player-card-selected', handleBoardPlayerCardSelected)
     socket.on('board:player-card-unselected', handleBoardPlayerCardUnselected)
+    socket.on('board:player-card-locked', handleBoardPlayerCardLocked)
 
 
 })
@@ -236,6 +241,7 @@ onBeforeUnmount(() => {
     socket.off('board:round-started', handleBoardRoundStarted)
     socket.off('board:player-card-selected', handleBoardPlayerCardSelected)
     socket.off('board:player-card-unselected', handleBoardPlayerCardUnselected)
+    socket.off('board:player-card-locked', handleBoardPlayerCardLocked)
 })
 
 watch(

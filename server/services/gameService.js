@@ -54,7 +54,7 @@ export const prepareGame = async ({ games, lobbyId }) => {
 
     // 1) Create 4 default rounds
     game.rounds = game.rounds ?? {}
-    for (let r = 1; r <= 4; r++) {
+    for (let r = 1; r <= 12; r++) {
         if (!game.rounds[r]) game.rounds[r] = {
             cardSelector: { player: null, selectedCard: {} },
             blackCard: null,
@@ -307,25 +307,32 @@ export const selectPlayerCard = ({ games, lobbyId, playerId, card }) => {
     const game = games.get(lobbyId)
     if (!game) return { error: "not_found" }
 
-    if (game.phase !== 'board') return { error: "round_not_active" }
+    const player = game.players?.find((p) => p.id === playerId)
+    if (!player) return { error: "player_not_found" }
 
     const roundNumber = game.currentRound
     const round = game.rounds?.[roundNumber]
     if (!round) return { error: "round_not_found" }
 
-    if (round.cardSelector?.player === playerId) return { error: "card_selector_cannot_select" }
+    // only possible in an active round
+    if (game.phase !== 'board') return { error: "round_not_active" }
 
-    const player = game.players?.find((p) => p.id === playerId)
-    if (!player) return { error: "player_not_found" }
+    // should not be the czar
+    if (round.cardSelector?.player === playerId) return { error: "card_selector_cannot_select" }
 
     const selected = player.white_cards?.find((c) => c.pack === card?.pack && c.card_id === card?.card_id) ?? card
     if (!selected) return { error: "card_not_found" }
 
     round.playerSelectedCards = round.playerSelectedCards ?? []
-    const idx = round.playerSelectedCards.findIndex((c) => c.playerId === playerId)
-    const entry = { playerId, card: selected }
-    if (idx >= 0) {
-        round.playerSelectedCards[idx] = entry
+
+    // check if the player already has a locked in card
+    const selectedCardIndex = round.playerSelectedCards.findIndex((c) => c.playerId === playerId)
+    const existingEntry = selectedCardIndex >= 0 ? round.playerSelectedCards[selectedCardIndex] : null
+    if (existingEntry?.locked) return { error: "selection_locked" }
+
+    const entry = { playerId, card: selected, locked: false }
+    if (selectedCardIndex >= 0) {
+        round.playerSelectedCards[selectedCardIndex] = entry
     } else {
         round.playerSelectedCards.push(entry)
     }
@@ -340,17 +347,53 @@ export const unselectPlayerCard = ({ games, lobbyId, playerId, card }) => {
     const game = games.get(lobbyId)
     if (!game) return { error: "not_found" }
 
+    // only possible in an active round
     if (game.phase !== 'board') return { error: "round_not_active" }
 
     const roundNumber = game.currentRound
     const round = game.rounds?.[roundNumber]
     if (!round) return { error: "round_not_found" }
 
+
+    // should not be the czar
+    if (round.cardSelector?.player === playerId) return { error: "card_selector_cannot_select" }
+
+
+    // check if the player already has a locked in card
+    const existingEntry = (round.playerSelectedCards ?? []).find((c) => c.playerId === playerId)
+    if (existingEntry?.locked) return { error: "selection_locked" }
+
     round.playerSelectedCards = (round.playerSelectedCards ?? []).filter((c) => c.playerId !== playerId)
     game.rounds[roundNumber] = round
     games.set(lobbyId, game)
 
     return { game, round, playerSelectedCard: { playerId, card } }
+}
+
+export const lockPlayerSelection = ({ games, lobbyId, playerId }) => {
+    const game = games.get(lobbyId)
+    if (!game) return { error: "not_found" }
+
+    // only possible in an active round
+    if (game.phase !== 'board') return { error: "round_not_active" }
+
+
+    const roundNumber = game.currentRound
+    const round = game.rounds?.[roundNumber]
+    if (!round) return { error: "round_not_found" }
+
+    // should not be the czar
+    if (round.cardSelector?.player === playerId) return { error: "card_selector_cannot_select" }
+
+
+    const selectedCardIndex = (round.playerSelectedCards ?? []).findIndex((c) => c.playerId === playerId)
+    if (selectedCardIndex < 0) return { error: "selection_not_found" }
+
+    round.playerSelectedCards[selectedCardIndex] = { ...round.playerSelectedCards[selectedCardIndex], locked: true }
+
+    game.rounds[roundNumber] = round
+    games.set(lobbyId, game)
+    return { game, round }
 }
 
 export const areAllNonSelectorPlayersSelected = (game) => {

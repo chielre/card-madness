@@ -18,9 +18,14 @@ const reconnect = () => {
             <div class="flex flex-col items-center">
                 <!-- Topbar -->
                 <img class="m-auto" width="300" src="../assets/images/logo.png" alt="">
-                <div class="bg-white text-black border-black rounded-xl border-8 p-8 text-2xl font-bold max-w-1/2 mt-8">
+                <div class="bg-white text-black border-black rounded-xl border-8 p-8 text-2xl font-bold max-w-1/2 mt-8 text-center">
+
+                    <h1 class="font-bold text-4xl mb-5">Whoops!</h1>
 
                     We are sorry.. we couldn't connect you to our server. Try reloading the page or try to connect again.
+                    
+                    
+                    <br>
                     <BaseButton @click="reconnect" class="mt-8 block" size="lg">I dont care, try again</BaseButton>
 
                 </div>

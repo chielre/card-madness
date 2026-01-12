@@ -23,7 +23,7 @@ type RoundState = {
         selectedCard: any
     }
     blackCard: any
-    playerSelectedCards: { playerId: string; card?: WhiteCard | null }[]
+    playerSelectedCards: { playerId: string; card?: WhiteCard | null; locked?: boolean }[]
 }
 
 type Game = {
@@ -64,6 +64,8 @@ export const useLobbyStore = defineStore('lobby', {
         pendingCzarSelectedTick: 0,
         lastSelectedCard: null as { playerId: string; card?: WhiteCard | null; action: 'selected' | 'unselected' } | null,
         selectedCardAnimTick: 0,
+        selectionLockDurationMs: 10000,
+        selectionLockExpiresAt: 0,
     }),
 
     actions: {
@@ -288,12 +290,13 @@ export const useLobbyStore = defineStore('lobby', {
             this.pendingCzarSelectedEntry = null
         },
 
-        recordPlayerSelectedCard(payload: { playerId: string; card?: WhiteCard | null }) {
+        recordPlayerSelectedCard(payload: { playerId: string; card?: WhiteCard | null; selectionLockDurationMs?: number; selectionLockExpiresAt?: number }) {
             if (this.currentRound) {
                 const list = this.currentRound.playerSelectedCards ?? []
                 const idx = list.findIndex((c) => c.playerId === payload.playerId)
                 const prevCard = idx >= 0 ? list[idx]?.card : null
-                const nextEntry = { playerId: payload.playerId, card: payload.card ?? prevCard ?? null }
+                const prevLocked = idx >= 0 ? list[idx]?.locked : false
+                const nextEntry = { playerId: payload.playerId, card: payload.card ?? prevCard ?? null, locked: prevLocked }
                 if (idx >= 0) {
                     list[idx] = nextEntry
                 } else {
@@ -303,6 +306,12 @@ export const useLobbyStore = defineStore('lobby', {
             }
             this.lastSelectedCard = { playerId: payload.playerId, card: payload.card ?? null, action: 'selected' }
             this.selectedCardAnimTick += 1
+            if (typeof payload.selectionLockDurationMs === 'number') {
+                this.selectionLockDurationMs = payload.selectionLockDurationMs
+            }
+            if (typeof payload.selectionLockExpiresAt === 'number') {
+                this.selectionLockExpiresAt = payload.selectionLockExpiresAt
+            }
         },
 
         recordPlayerUnselectedCard(payload: { playerId: string; card?: WhiteCard | null }) {
@@ -313,6 +322,14 @@ export const useLobbyStore = defineStore('lobby', {
             }
             this.lastSelectedCard = { playerId: payload.playerId, card: payload.card ?? null, action: 'unselected' }
             this.selectedCardAnimTick += 1
+        },
+        recordPlayerCardLocked(payload: { playerId: string }) {
+            if (!this.currentRound) return
+            const list = this.currentRound.playerSelectedCards ?? []
+            const idx = list.findIndex((c) => c.playerId === payload.playerId)
+            if (idx < 0) return
+            list[idx] = { ...list[idx], locked: true }
+            this.currentRound.playerSelectedCards = list
         },
 
     },

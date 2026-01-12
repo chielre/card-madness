@@ -2,6 +2,7 @@ import { transitionPhase } from './phaseService.js'
 import { autoSelectCzarCard, autoSelectMissingPlayerCards, finalizeRound, prepareGame, setRound } from './gameService.js'
 import { clearPhaseTimer, schedulePhaseTimer } from '../utils/phaseTimers.js'
 import { scheduleRoundTimer } from '../utils/roundTimers.js'
+import { clearSelectionLockTimers, getSelectionLockDelayMs, hasActiveSelectionLocks } from '../utils/selectionLockTimers.js'
 
 import { PHASE_DEFAULT_DURATIONS } from '../config/phaseDurations.js'
 
@@ -31,7 +32,7 @@ export const handleStartIntroFlow = async ({ io, socket, games, lobbyId, game })
         emitPlayerCardsUpdated(io, preparedGame)
 
 
-
+        // Debug 
         if (shouldSkipIntro()) {
             const introRes = transitionPhase({ games, io, lobbyId, to: 'intro' })
             if (introRes?.error) return
@@ -80,7 +81,9 @@ export const handleGameFlow = ({ io, socket, games, lobbyId, game }) => {
 
 }
 
-export const startRoundFlow = ({ io, games, lobbyId, round, durationMs = 35000 }) => {
+export const startRoundFlow = ({ io, games, lobbyId, round, durationMs = 90000 }) => {
+    clearSelectionLockTimers(lobbyId)
+
     const setRoundRes = setRound({ games, lobbyId, to: round })
     if (setRoundRes?.error) return setRoundRes
 
@@ -97,11 +100,19 @@ export const startRoundFlow = ({ io, games, lobbyId, round, durationMs = 35000 }
         round: freshGame.currentRound,
         durationMs,
         onTimeout: () => {
-            const gameNow = games.get(lobbyId)
-            if (!gameNow) return
-            if (gameNow.phase !== 'board') return
+            const waitForSelectionLocks = () => {
+                const gameNow = games.get(lobbyId)
+                if (!gameNow) return
+                if (gameNow.phase !== 'board') return
+                if (hasActiveSelectionLocks(lobbyId)) {
+                    const delayMs = Math.max(50, getSelectionLockDelayMs(lobbyId))
+                    setTimeout(waitForSelectionLocks, delayMs)
+                    return
+                }
+                startCzarPhase({ io, games, lobbyId, round })
+            }
 
-            startCzarPhase({ io, games, lobbyId, round })
+            waitForSelectionLocks()
         }
     })
     io.to(lobbyId).emit('board:round-started', { currentRound: startedRound, durationMs, expiresAt })
@@ -113,11 +124,15 @@ export const startCzarPhase = ({ io, games, lobbyId, round, durationMs }) => {
     const game = games.get(lobbyId)
     if (!game) return
 
+    clearSelectionLockTimers(lobbyId)
+
     if (game.phase !== 'czar') {
         transitionPhase({ games, io, lobbyId, to: 'czar' })
     }
 
     autoSelectMissingPlayerCards({ games, lobbyId })
+
+    
     const afterAutoGame = games.get(lobbyId)
     if (!afterAutoGame) return
     const roundState = afterAutoGame.rounds?.[afterAutoGame.currentRound]

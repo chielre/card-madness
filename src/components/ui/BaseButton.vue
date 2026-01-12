@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent } from 'vue'
+import { computed } from 'vue'
+
+import Plus from 'vue-material-design-icons/Plus.vue'
+import ChevronRight from 'vue-material-design-icons/ChevronRight.vue'
 
 type ButtonType = 'animated' | 'block'
 type ButtonColor = 'white' | 'black'
@@ -10,7 +13,7 @@ const props = withDefaults(defineProps<{
   color?: ButtonColor
   size?: ButtonSize
   disabled?: boolean
-  icon?: string // bv: "Plus", "ChevronRight"
+  icon?: 'Plus' | 'ChevronRight' | 'Trash' // (optioneel stricter)
   iconPosition?: 'left' | 'right'
   iconClass?: string
 }>(), {
@@ -24,19 +27,24 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{ click: [] }>()
 
+const icons = {
+  Plus,
+  ChevronRight,
+} as const
+
+const Icon = computed(() => (props.icon ? icons[props.icon] : null))
+
 const onClick = () => {
   if (props.disabled) return
   emit('click')
 }
 
-// --- base styling ---
 const baseClasses = 'btn'
 
 const typeClasses = computed(() => {
   switch (props.type) {
     case 'block':
       return 'btn-block'
-    case 'animated':
     default:
       return 'btn-animated'
   }
@@ -46,7 +54,6 @@ const colorClasses = computed(() => {
   switch (props.color) {
     case 'black':
       return 'btn-black'
-    case 'white':
     default:
       return 'btn-white'
   }
@@ -56,28 +63,9 @@ const sizeClasses = computed(() => {
   switch (props.size) {
     case 'lg':
       return 'btn-lg'
-    case 'md':
     default:
       return 'btn-md'
   }
-})
-
-// Vite-friendly dynamic icon loading
-const iconModules = import.meta.glob('/node_modules/vue-material-design-icons/*.vue')
-
-const Icon = computed(() => {
-  if (!props.icon) return null
-
-  const key = `/node_modules/vue-material-design-icons/${props.icon}.vue`
-  const loader = iconModules[key]
-
-  if (!loader) {
-    // optioneel: console.warn voor snelle debug
-    console.warn(`[BaseButton] Icon not found: ${key}`)
-    return null
-  }
-
-  return defineAsyncComponent(loader as any)
 })
 
 const iconGap = computed(() => (props.icon ? 'gap-2' : ''))
