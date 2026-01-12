@@ -17,7 +17,7 @@ A **mad** HTML5 multiplayer card game based on Card Against Humanity. Built with
 
 > [!IMPORTANT]
 > Card Madness is currently under active development. Cloning this repository may not provide a fully working game or a functional server. While this notice is present, Card Madness may not run reliably on your machine. 
-
+ 
 ## Why?
 So far, I haven’t found a good, modern, and easy way to play Cards Against Humanity with friends online. Existing solutions require you to register, pay, or are limited in the features they offer. That’s why I decided to contribute to the open-source community by building a fun game that does exactly what it promises, for free.
 
@@ -31,13 +31,7 @@ So far, I haven’t found a good, modern, and easy way to play Cards Against Hum
 - Scoreboard and round results ❌
 - Card czar selection ✅
 - audience selection ❌
-
-## Animated with [GSAP](https://gsap.com/)
-CardMadness uses GSAP to bring the game to life with fast, unexpected micro-animations, smooth phase transitions, responsive card interactions, and synced audio cues, all built purely with HTML, TypeScript, and CSS and running entirely in the browser to create a playful, high-energy Cards Against Humanity style experience. (Sounds catchy right?)
-<p align="center"><img src="https://chielreijnen.nl/cardmadness/czar-result.gif" alt="Logo"></p>
-
-
-
+- Multi language gameplay ❌
 
 ## Installation on Windows
 For this project you'll need NodeJS. Go to the [official Node.js website](https://nodejs.org/), download the installer and follow the steps to install NodeJS on your device.
