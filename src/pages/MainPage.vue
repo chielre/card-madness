@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
-import { playCue } from '@/audio/cues'
 import { useUiStore } from '@/store/UiStore'
 
 import BaseButton from '@/components/ui/BaseButton.vue'
@@ -9,7 +8,6 @@ const router = useRouter()
 const ui = useUiStore()
 
 const CreateLobby = () => {
-    playCue();
     router.push('lobby')
 }
 

@@ -5,7 +5,6 @@ import { useAudioStore } from '@/store/AudioStore'
 import { useConnectionStore } from '@/store/ConnectionStore'
 
 import { resolvePacks } from "@/utils/packs"
-import { playCue } from '@/audio/cues'
 
 import Close from 'vue-material-design-icons/Close.vue';
 
@@ -50,7 +49,6 @@ const syncPackSelection = () => {
         audio.playLobby()
         return
     }
-    playCue()
 
 }
 
