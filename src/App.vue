@@ -10,8 +10,6 @@ import BaseButton from '@/components/ui/BaseButton.vue'
 import SettingsModal from '@/components/modals/SettingsModal.vue'
 import ConfirmModal from '@/components/modals/ConfirmModal.vue'
 
-import MenuIcon from 'vue-material-design-icons/Menu.vue';
-
 import LoadingPage from '@/pages/LoadingPage.vue'
 import ConnectionError from '@/pages/ConnectionError.vue'
 
