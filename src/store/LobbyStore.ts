@@ -80,7 +80,6 @@ export const useLobbyStore = defineStore('lobby', {
     actions: {
         getCurrentCardSelector(): Player | null {
             const id = this.currentRound?.cardSelector?.player
-            console.log(id)
 
             if (!id) return null
             

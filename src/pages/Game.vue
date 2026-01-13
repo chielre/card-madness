@@ -98,7 +98,6 @@ const handlePlayersUpdated = (payload: { id: string; players: { id: string; name
 
 const handleRoomHostUpdated = (payload: { hostId: string }) => {
     lobby.host = payload.hostId
-    console.log(`New lobby host: ${payload.hostId}`);
 }
 
 
@@ -107,13 +106,11 @@ Game player events
 */
 const handlePlayerReady = (payload: { id: string; ready: boolean }) => {
     lobby.updatePlayer(payload.id, { ready: payload.ready })
-    console.log(`Player ready: ${payload.id}`);
 
 
 }
 const handlePlayerJoined = (payload: { id: string; name: string; ready?: boolean }) => {
     lobby.addPlayer(payload)
-    console.log(`New player joined: ${payload.name}`);
 
 }
 const handlePlayerLeft = (payload: { id: string; players?: { id: string; name: string; ready?: boolean }[] }) => {
@@ -121,7 +118,6 @@ const handlePlayerLeft = (payload: { id: string; players?: { id: string; name: s
         lobby.players = normalizePlayers(payload.players)
     } else {
         lobby.removePlayer(payload.id)
-        console.log(`Player left: ${payload.id}`);
 
     }
 }
@@ -136,7 +132,6 @@ const handleGamePhaseChange = (payload: { phase: string }) => {
     if (payload.phase) {
         lobby.setPhase(payload.phase)
     }
-    console.log(`New game phase: ${payload.phase}`);
 }
 const handleGamePhaseTimer = (payload: { phase: string; durationMs?: number; expiresAt?: number }) => {
     if (!payload?.phase) return
@@ -146,7 +141,6 @@ const handleGamePhaseTimeout = (payload: { phase: string }) => {
     if (payload.phase) {
         lobby.markPhaseTimeout()
     }
-    console.log(`Phase timeout: ${payload.phase}`);
 
 }
 
@@ -174,7 +168,6 @@ const handleBoardRoundTimeout = (payload: { round: string }) => {
     if (payload.round) {
         lobby.markRoundTimeout()
     }
-    console.log(`Round timeout: ${payload.round}`);
 
 }
 

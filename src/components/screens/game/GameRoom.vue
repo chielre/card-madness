@@ -66,7 +66,6 @@ watch(
             introPhaseAnimation()
         }
 
-        console.log('gameroom: phase changed to' + phase)
     }
 )
 

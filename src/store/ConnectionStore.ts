@@ -19,12 +19,11 @@ export const useConnectionStore = defineStore('connection', {
             setTimeout(async () => {
                 try {
                     const socket = await connectSocket()
-                   
+
                     this.isConnected = true
                     this.socketId = socket.id ?? null
                     this.error = null
 
-                    console.log('User connecting...')
 
 
                     // luister op disconnects / reconnects
@@ -32,13 +31,11 @@ export const useConnectionStore = defineStore('connection', {
                         this.isConnected = false
                         this.socketId = null
 
-                        console.log('User disconnected')
 
                     })
 
                     socket.on('connect', () => {
 
-                        console.log('user connected')
                         this.isConnected = true
                         this.socketId = socket.id ?? null
                         this.error = null
@@ -50,7 +47,6 @@ export const useConnectionStore = defineStore('connection', {
                         this.isConnected = false
                         this.socketId = null
 
-                        console.error(this.error)
 
                     })
                 } catch (e: unknown) {
@@ -58,7 +54,7 @@ export const useConnectionStore = defineStore('connection', {
                         e instanceof Error ? e.message : 'Kon geen verbinding maken met de server'
                     this.isConnected = false
                     this.socketId = null
-                  
+
 
                 } finally {
                     this.isConnecting = false
