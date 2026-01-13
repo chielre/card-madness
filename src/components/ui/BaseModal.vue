@@ -79,7 +79,7 @@ defineExpose({ open, close })
 <template>
   <div v-if="isVisible" ref="modalWrapper" class="fixed inset-0 z-50 flex items-center justify-center">
     <div ref="modalBackdropRef" class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="onOverlayClick"></div>
-    <div ref="modalRef" :class="modalClass" class="relative z-10 scale-0">
+    <div ref="modalRef" :class="modalClass" class="relative z-80 scale-0">
       <slot />
     </div>
   </div>

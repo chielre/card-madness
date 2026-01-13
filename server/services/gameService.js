@@ -10,12 +10,23 @@ import {
     blackCardExists
 } from '../utils/cards.js'
 
+const MAX_PLAYER_NAME_LENGTH = 25
 const normalizeName = (name) => (name ?? '').toString().trim()
 const normalizeLanguage = (language) => (language ?? '').toString().trim() || 'nl'
 
 const keyOf = (c) => `${c.pack}:${c.card_id}`
 const rand = (max) => Math.floor(Math.random() * max)
 const randomPlayerLobbyName = (players) => players[rand(players.length)]?.name ?? ""
+const countNameSlots = (text) => (text?.match(/:name/g) ?? []).length
+const pickRandomLobbyNames = (players, count) =>
+    Array.from({ length: count }, () => randomPlayerLobbyName(players))
+const getWhiteCardText = (pack, cardId) => getPackCards(pack)?.white?.[cardId] ?? ""
+const getBlackCardText = (pack, cardId) => getPackCards(pack)?.black?.[cardId] ?? ""
+const buildCardNames = (players, text) => {
+    const slotCount = countNameSlots(text)
+    if (!slotCount) return []
+    return pickRandomLobbyNames(players, slotCount)
+}
 
 export const createGame = ({ games, hostId, hostName, language }) => {
     const normalizedHostName = normalizeName(hostName)
@@ -118,7 +129,9 @@ export const givePlayersWhiteCards = async ({ games, lobbyId, handSize = 5, uniq
             if (!candidates.length) return { error: "not_enough_white_cards" }
 
             const picked = candidates[rand(candidates.length)]
-            player.white_cards.push({ ...picked, name: randomPlayerLobbyName(game.players) })
+            const text = getWhiteCardText(picked.pack, picked.card_id)
+            const names = buildCardNames(game.players, text)
+            player.white_cards.push(names.length ? { ...picked, names } : { ...picked })
             if (uniquePerGame) used.add(keyOf(picked))
         }
     }
@@ -156,7 +169,9 @@ export const givePlayerOneWhiteCard = async ({ games, lobbyId, playerId, uniqueP
     if (!candidates.length) return { error: "not_enough_white_cards" }
 
     const picked = candidates[rand(candidates.length)]
-    const card = { ...picked, name: randomPlayerLobbyName(game.players) }
+    const text = getWhiteCardText(picked.pack, picked.card_id)
+    const names = buildCardNames(game.players, text)
+    const card = names.length ? { ...picked, names } : { ...picked }
 
     player.white_cards.push(card)
     games.set(lobbyId, game)
@@ -257,6 +272,10 @@ export const setPhase = ({ games, lobbyId, to }) => {
         return { error: 'invalid_transition', from: game.phase, to }
     }
 
+    if (to === Phase.STARTING && (game.players?.length ?? 0) < 2) {
+        return { error: 'not_enough_players' }
+    }
+
     game.phase = to
     games.set(lobbyId, game)
     return { game }
@@ -306,7 +325,11 @@ export const prepareRound = ({ games, lobbyId, round }) => {
     const uniqueBlackCard = pickUniqueRandomBlackCard(game)
     if (!uniqueBlackCard) return { error: "no_black_cards_left" }
 
-    targetRound.blackCard = uniqueBlackCard
+    const blackText = getBlackCardText(uniqueBlackCard.pack, uniqueBlackCard.card_id)
+    const blackNames = buildCardNames(game.players, blackText)
+    targetRound.blackCard = blackNames.length
+        ? { ...uniqueBlackCard, names: blackNames }
+        : uniqueBlackCard
 
     // 3) Removing dust from previous rounds 
     targetRound.playerSelectedCards = []
@@ -561,7 +584,9 @@ export const givePlayerHand = async ({ games, lobbyId, playerId, handSize = 5, u
         if (!candidates.length) return { error: "not_enough_white_cards" }
 
         const picked = candidates[rand(candidates.length)]
-        player.white_cards.push({ ...picked, name: randomPlayerLobbyName(game.players) })
+        const text = getWhiteCardText(picked.pack, picked.card_id)
+        const names = buildCardNames(game.players, text)
+        player.white_cards.push(names.length ? { ...picked, names } : { ...picked })
         if (uniquePerGame) used.add(keyOf(picked))
     }
 

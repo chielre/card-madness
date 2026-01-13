@@ -18,6 +18,8 @@ const shouldSkipIntro = () =>
 
 export const handleStartIntroFlow = async ({ io, socket, games, lobbyId, game }) => {
     const everyoneReady = game.players.length > 0 && game.players.every((p) => p.ready)
+    const hasMinimumPlayers = (game.players?.length ?? 0) >= 2
+    if (!hasMinimumPlayers) return
     if (!everyoneReady) return
 
     clearPhaseTimer(lobbyId)
@@ -81,8 +83,18 @@ export const handleGameFlow = ({ io, socket, games, lobbyId, game }) => {
 
 }
 
+export const startResultsPhase = ({ io, games, lobbyId }) => {
+    return transitionPhase({ games, io, lobbyId, to: 'results' })
+}
+
 export const startRoundFlow = ({ io, games, lobbyId, round, durationMs = 90000 }) => {
     clearSelectionLockTimers(lobbyId)
+
+    const game = games.get(lobbyId)
+    if (!game) return { error: "not_found" }
+    if (!game.rounds?.[round]) {
+        return startResultsPhase({ io, games, lobbyId })
+    }
 
     const setRoundRes = setRound({ games, lobbyId, to: round })
     if (setRoundRes?.error) return setRoundRes

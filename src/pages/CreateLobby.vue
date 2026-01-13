@@ -16,7 +16,12 @@ const errorMessage = ref('')
 const createLobby = async () => {
     if (!nameInput.value.trim()) return
     try {
-        await lobby.createLobby(nameInput.value);
+        const res = await lobby.createLobby(nameInput.value);
+        if ((res as any)?.error === 'name_too_long') {
+            errorMessage.value = 'Naam mag maximaal 25 tekens zijn.'
+            return
+        }
+        errorMessage.value = ''
         return router.push({ name: 'game', params: { id: lobby.lobbyId } })
     } catch (e) {
         errorMessage.value = e instanceof Error ? e.message : 'Lobby kan niet worden gemaakt'

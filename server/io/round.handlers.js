@@ -1,4 +1,4 @@
-import { startRoundFlow } from '../services/phaseFlowService.js'
+import { startResultsPhase, startRoundFlow } from '../services/phaseFlowService.js'
 import { transitionPhase } from '../services/phaseService.js'
 import { clearPhaseTimer } from '../utils/phaseTimers.js'
 import { finalizeRound, selectCzarCard } from '../services/gameService.js'
@@ -20,7 +20,12 @@ export const registerRoundsHandlers = ({ io, socket, games, socketRooms }) => {
         }
 
         const nextRound = currentRound + 1
-        if (!game.rounds?.[nextRound]) return cb?.({ error: 'round_not_found' })
+        if (!game.rounds?.[nextRound]) {
+            clearPhaseTimer(lobbyId)
+            const resultsRes = startResultsPhase({ io, games, lobbyId })
+            if (resultsRes?.error) return cb?.(resultsRes)
+            return cb?.({ ok: true, phase: 'results' })
+        }
 
         clearPhaseTimer(lobbyId)
         transitionPhase({ games, io, lobbyId, to: 'board' })

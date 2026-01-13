@@ -7,11 +7,13 @@ export type WhiteCardInput = {
     pack: string
     card_id: number
     name?: string
+    names?: string[]
 }
 
 export type BlackCardInput = {
     pack: string
     card_id: number
+    names?: string[]
 }
 
 export type ResolvedCard = WhiteCardInput & {
@@ -60,16 +62,25 @@ function formatAnswerHtml(answerHtml?: string) {
     return `<span class="card-answer">${value}</span>`
 }
 
-function hydrate(text: string, name?: string, answerHtml?: string) {
+function hydrate(text: string, name?: string, names?: string[], answerHtml?: string) {
+    let nameIndex = 0
+    const hasNames = Array.isArray(names) && names.length > 0
     return text
-        .replace(/:name/g, formatName(name))
+        .replace(/:name/g, () => {
+            if (hasNames) {
+                const value = names[nameIndex] ?? names[names.length - 1] ?? ""
+                nameIndex += 1
+                return formatName(value)
+            }
+            return formatName(name)
+        })
         .replace(/:answer/g, formatAnswerHtml(answerHtml))
 }
 
 export function resolveWhiteCards(cards: WhiteCardInput[]): ResolvedCard[] {
     const cardsByPack = getCardsByPack()
 
-    return cards.map(({ pack, card_id, name }) => {
+    return cards.map(({ pack, card_id, name, names }) => {
         if (!getPackById(pack)) throw new Error(`Unknown pack: ${pack}`)
 
         const packJson = cardsByPack[pack]
@@ -78,7 +89,7 @@ export function resolveWhiteCards(cards: WhiteCardInput[]): ResolvedCard[] {
         const text = packJson.white?.[card_id]
         if (!text) throw new Error(`Unknown white card_id ${card_id} in pack ${pack}`)
 
-        return { pack: pack, card_id: card_id, name: name, text: hydrate(text, name) }
+        return { pack: pack, card_id: card_id, name: name, text: hydrate(text, name, names) }
     })
 }
 
@@ -93,5 +104,5 @@ export function resolveBlackCard(card: BlackCardInput, answerHtml?: string): Res
     const text = packJson.black?.[card.card_id]
     if (!text) throw new Error(`Unknown black card_id ${card.card_id} in pack ${card.pack}`)
 
-    return { pack: card.pack, card_id: card.card_id, text: hydrate(text, undefined, answerHtml) }
+    return { pack: card.pack, card_id: card.card_id, text: hydrate(text, undefined, card.names, answerHtml) }
 }

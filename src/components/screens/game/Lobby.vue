@@ -71,6 +71,14 @@ const closeReadyModal = () => {
     readyModalRef.value?.reset()
 }
 
+const canKickPlayer = (playerId: string) =>
+    lobby.getCurrentPlayerIsHost() && playerId !== connection.getSocketSafe()?.id
+
+const kickPlayer = async (playerId: string) => {
+    if (!canKickPlayer(playerId)) return
+    await lobby.kickPlayer(lobby.lobbyId, playerId)
+}
+
 watch(selectedPackIds, () => syncPackSelection(), { immediate: true })
 
 
@@ -104,11 +112,15 @@ defineExpose({ openReadyModal, closeReadyModal })
                             <div>{{ player.name }}</div>
                         </div>
                         <div class="flex items-center gap-4 ">
-                            <div class="flex gap-4 opacity-0  group-hover:opacity-100">
-                                <div class="flex items-center justify-center w-10 h-10 hover:bg-gray-200 rounded-lg">
+                            <div class="flex gap-4 opacity-0 group-hover:opacity-100">
+                                <button
+                                    v-if="canKickPlayer(player.id)"
+                                    type="button"
+                                    class="flex items-center justify-center w-10 h-10 hover:bg-gray-200 rounded-lg"
+                                    @click.stop="kickPlayer(player.id)"
+                                >
                                     <Close />
-                                </div>
-
+                                </button>
                             </div>
                             <div v-if="player.id === lobby.host" class="text-sm font-black px-2 py-1 rounded-full bg-yellow-300 text-black border-4 border-b-8 border-black">
                                 Host

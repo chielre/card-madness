@@ -7,6 +7,7 @@ type WhiteCard = {
     pack: string,
     card_id: number,
     name?: string,
+    names?: string[],
     text?: string,
 }
 
@@ -75,6 +76,10 @@ export const useLobbyStore = defineStore('lobby', {
         selectedCardAnimTick: 0,
         selectionLockDurationMs: 10000,
         selectionLockExpiresAt: 0,
+        lastSelectionLockBoost: null as { playerId: string; selectionLockDurationMs?: number; selectionLockExpiresAt?: number } | null,
+        selectionLockBoostTick: 0,
+        czarCursor: null as { playerId?: string; x: number; y: number; visible?: boolean } | null,
+        czarCursorTick: 0,
     }),
 
     actions: {
@@ -108,10 +113,12 @@ export const useLobbyStore = defineStore('lobby', {
 
         async createLobby(hostName: string, language?: string) {
             const conn = useConnectionStore()
-            const { lobbyId, selectedPacks } = await conn.emitWithAck<{ lobbyId: string; selectedPacks: string[] }>('room:create', { hostName, language })
+            const res = await conn.emitWithAck<{ lobbyId?: string; selectedPacks?: string[]; error?: string }>('room:create', { hostName, language })
+            if (res?.error) return res
 
-            this.lobbyId = lobbyId
-            this.selectedPacks = selectedPacks
+            this.lobbyId = res.lobbyId ?? ''
+            this.selectedPacks = res.selectedPacks ?? []
+            return res
         },
 
         applyServerState(res: Game) {
@@ -177,6 +184,11 @@ export const useLobbyStore = defineStore('lobby', {
                 this.players = this.players.filter((p) => p.id !== conn.getSocketSafe()?.id)
             }
             return res
+        },
+
+        async kickPlayer(lobbyId: string, playerId: string) {
+            const conn = useConnectionStore()
+            return conn.emitWithAck<{ ok?: boolean; error?: string }>('room:kick', { lobbyId, playerId })
         },
 
         async setSelectedPacks(lobbyId: string, packs: string[]) {
@@ -369,6 +381,14 @@ export const useLobbyStore = defineStore('lobby', {
             if (idx < 0) return
             list[idx] = { ...list[idx], locked: true }
             this.currentRound.playerSelectedCards = list
+        },
+        recordSelectionLockBoost(payload: { playerId: string; selectionLockDurationMs?: number; selectionLockExpiresAt?: number }) {
+            this.lastSelectionLockBoost = payload
+            this.selectionLockBoostTick += 1
+        },
+        recordCzarCursor(payload: { playerId?: string; x: number; y: number; visible?: boolean }) {
+            this.czarCursor = payload
+            this.czarCursorTick += 1
         },
 
     },

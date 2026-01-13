@@ -25,7 +25,7 @@ const onConfirm = () => ui.resolveConfirm(true)
   <BaseModal ref="modalRef" :close-on-overlay="false" @request-close="onCancel">
     <div class="flex items-center justify-between">
       <h3 class="text-2xl font-black">{{ ui.confirmTitle }}</h3>
-      <BaseButton color="black" size="md" @click="onCancel">Close</BaseButton>
+      <BaseButton icon="Close" size="sm" @click="onCancel"></BaseButton>
     </div>
 
     <p v-if="ui.confirmMessage" class="mt-4 text-lg text-gray-700">
@@ -34,11 +34,7 @@ const onConfirm = () => ui.resolveConfirm(true)
 
     <div class="mt-6 flex justify-end gap-3">
       <BaseButton color="black" size="md" @click="onCancel">{{ ui.confirmCancelText }}</BaseButton>
-      <BaseButton
-        :color="ui.confirmIsDestructive ? 'pink' : 'green'"
-        size="md"
-        @click="onConfirm"
-      >
+      <BaseButton :color="ui.confirmIsDestructive ? 'pink' : 'green'" size="md" @click="onConfirm">
         {{ ui.confirmConfirmText }}
       </BaseButton>
     </div>

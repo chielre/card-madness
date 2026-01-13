@@ -6,9 +6,12 @@ import { clearPhaseTimer, schedulePhaseTimer } from '../utils/phaseTimers.js'
 import { clearRoundTimer } from '../utils/roundTimers.js'
 import { PHASE_DEFAULT_DURATIONS } from '../config/phaseDurations.js'
 import { phaseTimers, roundTimers, selectionLockTimers } from '../state/store.js'
+import { emitPlayersUpdated } from './emitters.js'
 
 export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
     socket.on('room:create', ({ hostName, language }, cb) => {
+        const trimmedName = (hostName ?? '').toString().trim()
+        if (trimmedName.length > 25) return cb?.({ error: 'name_too_long' })
         const game = createGame({
             games,
             hostId: socket.id,
@@ -28,6 +31,8 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
     })
 
     socket.on('room:join', async ({ lobbyId, name, language }, cb) => {
+        const trimmedName = (name ?? '').toString().trim()
+        if (trimmedName.length > 25) return cb?.({ error: 'name_too_long' })
         const game = joinGame({
             games,
             lobbyId,
@@ -98,6 +103,35 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
         cb?.({ ok: true })
     })
 
+    socket.on('room:kick', ({ lobbyId, playerId }, cb) => {
+        const game = games.get(lobbyId)
+        if (!game) return cb?.({ error: 'not_found' })
+        if (game.host !== socket.id) return cb?.({ error: 'not_host' })
+        if (!playerId || playerId === game.host) return cb?.({ error: 'invalid_player' })
+
+        const res = leaveGame({ games, lobbyId, socketId: playerId })
+        if (!res) return cb?.({ error: 'not_found' })
+
+        const playerSocket = io.sockets.sockets.get(playerId)
+        if (playerSocket) {
+            playerSocket.leave(lobbyId)
+            trackLeave(socketRooms, playerId, lobbyId)
+            playerSocket.emit('room:kicked', { lobbyId })
+        }
+
+        socket.to(lobbyId).emit('room:player-left', { id: playerId, players: res.game?.players ?? [] })
+        emitPlayersUpdated({ io, lobbyId, game: res.game })
+
+        if (res.hostChangedTo) io.to(lobbyId).emit('room:host-changed', { hostId: res.hostChangedTo })
+
+        if (res.deleted) {
+            clearPhaseTimer(lobbyId)
+            clearRoundTimer(lobbyId)
+        }
+
+        cb?.({ ok: true })
+    })
+
     socket.on('room:state', ({ lobbyId }, cb) => {
         const game = games.get(lobbyId)
         if (!game) return cb?.({ error: 'not_found' })
@@ -129,6 +163,10 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
 
         clearPhaseTimer(lobbyId)
         clearRoundTimer(lobbyId)
+
+        if (phase === 'starting' && (game.players?.length ?? 0) < 2) {
+            return cb?.({ error: 'not_enough_players' })
+        }
 
         if (phase === 'board') {
             const currentRound = Number(game.currentRound) || 0

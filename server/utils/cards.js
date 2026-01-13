@@ -98,12 +98,21 @@ export const pickUniqueRandomBlackCard = (game) => {
     return pool[rand(pool.length)]
 }
 
-export const resolveWhiteCardText = ({ pack, card_id, name }) => {
+export const resolveWhiteCardText = ({ pack, card_id, name, names }) => {
     if (!packExists(pack)) return null
     const packJson = loadCardsByPack()[pack]
     const text = packJson?.white?.[card_id]
     if (!text) return null
-    return text.replace(/:name/g, name ?? "")
+    let nameIndex = 0
+    const nameList = Array.isArray(names) ? names : null
+    return text.replace(/:name/g, () => {
+        if (nameList) {
+            const value = nameList[nameIndex] ?? nameList[nameList.length - 1] ?? ""
+            nameIndex += 1
+            return value
+        }
+        return name ?? ""
+    })
 }
 
 export const whiteCardExists = (pack, id) => {

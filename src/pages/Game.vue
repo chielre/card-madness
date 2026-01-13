@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useConnectionStore } from '@/store/ConnectionStore'
 import { useLobbyStore } from '@/store/LobbyStore'
 import { useAudioStore } from '@/store/AudioStore'
+import { useUiStore } from '@/store/UiStore'
 
 // Screens (optioneel te gebruiken)
 import JoinScreen from '@/components/screens/game/Join.vue'
@@ -15,6 +16,7 @@ const router = useRouter()
 const connection = useConnectionStore()
 const lobby = useLobbyStore()
 const audio = useAudioStore()
+const ui = useUiStore()
 
 const nameInput = ref('')
 const isLoading = ref(true)
@@ -66,6 +68,11 @@ const joinWithName = async () => {
     try {
         const res = await lobby.joinLobby(lobbyId, nameInput.value.trim())
         if ((res as any)?.error === 'not_found') return roomNotFound()
+        if ((res as any)?.error === 'name_too_long') {
+            errorMessage.value = 'Naam mag maximaal 25 tekens zijn.'
+            return
+        }
+        errorMessage.value = ''
     } catch (e) {
         errorMessage.value = e instanceof Error ? e.message : 'Kon niet joinen'
     }
@@ -100,6 +107,16 @@ const handleRoomHostUpdated = (payload: { hostId: string }) => {
     lobby.host = payload.hostId
 }
 
+const handleRoomKicked = (payload: { lobbyId?: string }) => {
+    if (payload?.lobbyId && payload.lobbyId !== lobbyId) return
+    ui.confirmAction({
+        title: 'Je bent gekickt',
+        message: 'De lobby host heeft je gekickt. Je kan niet meer verder spelen.',
+        confirmText: 'Ok',
+        cancelText: 'Sluiten',
+    })
+    router.replace({ name: 'main' })
+}
 
 /*-----------------------------------
 Game player events
@@ -182,6 +199,12 @@ const handleBoardPlayerCardUnselected = (payload: { playerId: string; card?: any
 const handleBoardPlayerCardLocked = (payload: { playerId: string }) => {
     lobby.recordPlayerCardLocked(payload)
 }
+const handleBoardPlayerCardLockBoost = (payload: { playerId: string; selectionLockDurationMs?: number; selectionLockExpiresAt?: number }) => {
+    lobby.recordSelectionLockBoost(payload)
+}
+const handleCzarCursorUpdate = (payload: { playerId?: string; x: number; y: number; visible?: boolean }) => {
+    lobby.recordCzarCursor(payload)
+}
 
 
 /*-----------------------------------
@@ -204,6 +227,7 @@ onMounted(async () => {
     socket.on('room:phase-changed', handleGamePhaseChange)
     socket.on('room:phase-timer', handleGamePhaseTimer)
     socket.on('room:phase-timeout', handleGamePhaseTimeout)
+    socket.on('room:kicked', handleRoomKicked)
 
     socket.on('packs:updated', handlePacksUpdated)
 
@@ -213,6 +237,8 @@ onMounted(async () => {
     socket.on('board:player-card-selected', handleBoardPlayerCardSelected)
     socket.on('board:player-card-unselected', handleBoardPlayerCardUnselected)
     socket.on('board:player-card-locked', handleBoardPlayerCardLocked)
+    socket.on('board:player-card-lock-boost', handleBoardPlayerCardLockBoost)
+    socket.on('czar:cursor-update', handleCzarCursorUpdate)
 
 
 })
@@ -231,6 +257,7 @@ onBeforeUnmount(() => {
     socket.off('room:phase-changed', handleGamePhaseChange)
     socket.off('room:phase-timer', handleGamePhaseTimer)
     socket.off('room:phase-timeout', handleGamePhaseTimeout)
+    socket.off('room:kicked', handleRoomKicked)
 
     socket.off('packs:updated', handlePacksUpdated)
 
@@ -239,6 +266,8 @@ onBeforeUnmount(() => {
     socket.off('board:player-card-selected', handleBoardPlayerCardSelected)
     socket.off('board:player-card-unselected', handleBoardPlayerCardUnselected)
     socket.off('board:player-card-locked', handleBoardPlayerCardLocked)
+    socket.off('board:player-card-lock-boost', handleBoardPlayerCardLockBoost)
+    socket.off('czar:cursor-update', handleCzarCursorUpdate)
 })
 
 watch(
