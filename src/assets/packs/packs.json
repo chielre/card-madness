@@ -34,8 +34,8 @@
       "logo": "nsfw_pack.png",
       "background": "bg_nsfw.png",
       "partner_logo": null,
-      "gradient_from": "#520000",
-      "gradient_to": "#8D1C00",
+      "gradient_from": "#000000",
+      "gradient_to": "#DD2C00",
       "music": "game_nsfw.mp3"
     }
   },
