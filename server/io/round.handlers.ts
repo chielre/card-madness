@@ -30,7 +30,7 @@ export const registerRoundsHandlers = ({ io, socket, games, socketRooms }) => {
         clearPhaseTimer(lobbyId)
         transitionPhase({ games, io, lobbyId, to: 'board' })
         const res = startRoundFlow({ io, games, lobbyId, round: nextRound })
-        if (res?.error) return cb?.(res)
+        if (res && 'error' in res) return cb?.(res)
 
         cb?.({ ok: true, round: nextRound })
     })

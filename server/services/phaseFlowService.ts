@@ -27,7 +27,7 @@ export const handleStartIntroFlow = async ({ io, socket, games, lobbyId, game })
     if (game.phase === 'starting') {
 
         const prepRes = await prepareGame({ games, lobbyId })
-        if (prepRes?.error) return
+        if (prepRes && 'error' in prepRes) return
 
 
         const preparedGame = games.get(lobbyId)
@@ -140,7 +140,19 @@ export const startRoundFlow = ({ io, games, lobbyId, round, durationMs = 90000 }
     return { game: freshGame, round: startedRound }
 }
 
-export const startCzarPhase = ({ io, games, lobbyId, round, durationMs }) => {
+export const startCzarPhase = ({
+    io,
+    games,
+    lobbyId,
+    round,
+    durationMs,
+}: {
+    io: any
+    games: any
+    lobbyId: any
+    round: any
+    durationMs?: number
+}) => {
     const game = games.get(lobbyId)
     if (!game) return
 
@@ -155,6 +167,7 @@ export const startCzarPhase = ({ io, games, lobbyId, round, durationMs }) => {
     
     const afterAutoGame = games.get(lobbyId)
     if (!afterAutoGame) return
+
     const roundState = afterAutoGame.rounds?.[afterAutoGame.currentRound]
     if (!roundState) return
 
@@ -177,7 +190,7 @@ export const startCzarPhase = ({ io, games, lobbyId, round, durationMs }) => {
         io,
         lobbyId,
         phase: 'czar',
-        durationMs,
+        durationMs: durationMs ?? PHASE_DEFAULT_DURATIONS.czar,
         defaultDurations: PHASE_DEFAULT_DURATIONS,
         onTimeout: async () => {
             const autoPick = autoSelectCzarCard({ games, lobbyId })

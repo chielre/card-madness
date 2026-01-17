@@ -9,7 +9,21 @@ export const clearRoundTimer = (lobbyId) => {
     roundTimers.delete(lobbyId)
 }
 
-export const scheduleRoundTimer = ({ io, lobbyId, round, durationMs, defaultDuration = 240000, onTimeout }) => {
+export const scheduleRoundTimer = ({
+    io,
+    lobbyId,
+    round,
+    durationMs,
+    defaultDuration = 240000,
+    onTimeout,
+}: {
+    io: any
+    lobbyId: any
+    round: any
+    durationMs?: number
+    defaultDuration?: number
+    onTimeout?: () => void
+}) => {
     clearRoundTimer(lobbyId)
 
     const ms = durationMs ?? defaultDuration

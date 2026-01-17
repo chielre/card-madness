@@ -5,7 +5,7 @@ import { packExists } from "./packs.js"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-const PROJECT_ROOT = path.resolve(__dirname, "../..")
+const PROJECT_ROOT = path.resolve(__dirname, "..", "..", "..")
 
 const CARDS_DIR = path.join(PROJECT_ROOT, "src", "assets", "packs", "cards", "nl")
 
@@ -75,8 +75,9 @@ export const pickUniqueRandomBlackCard = (game) => {
     const rand = (max) => Math.floor(Math.random() * max)
 
 
+    const rounds = Object.values(game.rounds ?? {}) as Array<{ blackCard?: { pack: string; card_id: number } }>
     const used = new Set(
-        Object.values(game.rounds ?? {})
+        rounds
             .map((r) => r?.blackCard)
             .filter(Boolean)
             .map(keyOf)

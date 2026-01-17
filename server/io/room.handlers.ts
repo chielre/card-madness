@@ -42,7 +42,7 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
 
         if (!['lobby', 'starting'].includes(game.phase)) {
             const dealRes = await givePlayerHand({ games, lobbyId, playerId: socket.id })
-            if (!dealRes?.error && dealRes?.player) {
+            if (dealRes && 'player' in dealRes && dealRes.player) {
                 socket.emit("room:player-cards-updated", { cards: dealRes.player.white_cards ?? [] })
             }
         }
@@ -172,7 +172,7 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
             const currentRound = Number(game.currentRound) || 0
             const nextRound = game.phase === 'czar-result' ? currentRound + 1 : Math.max(1, currentRound || 1)
             const res = startRoundFlow({ io, games, lobbyId, round: nextRound, durationMs })
-            if (res?.error) return cb?.(res)
+            if (res && 'error' in res) return cb?.(res)
             const updated = games.get(lobbyId)
             return cb?.({ lobbyId: lobbyId, phase: updated?.phase ?? game.phase, host: updated?.host ?? game.host, players: updated?.players ?? game.players, selectedPacks: updated?.selectedPacks ?? game.selectedPacks ?? [] })
         }

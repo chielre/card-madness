@@ -5,8 +5,7 @@ import { fileURLToPath } from "node:url"
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-// ⬆⬆⬆ van /server/utils → /server → / → project root → /src/assets/...
-const PROJECT_ROOT = path.resolve(__dirname, "../..")
+const PROJECT_ROOT = path.resolve(__dirname, "..", "..", "..")
 
 const PACKS_DIR = path.join(PROJECT_ROOT, "src", "assets", "packs")
 const PACKS_META_FILE = path.join(PACKS_DIR, "packs.json")

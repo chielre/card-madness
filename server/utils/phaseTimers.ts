@@ -9,7 +9,21 @@ export const clearPhaseTimer = (lobbyId) => {
     phaseTimers.delete(lobbyId)
 }
 
-export const schedulePhaseTimer = ({ io, lobbyId, phase, durationMs, defaultDurations = {}, onTimeout }) => {
+export const schedulePhaseTimer = ({
+    io,
+    lobbyId,
+    phase,
+    durationMs,
+    defaultDurations = {},
+    onTimeout,
+}: {
+    io: any
+    lobbyId: any
+    phase: any
+    durationMs?: number
+    defaultDurations?: Record<string, number>
+    onTimeout?: () => void
+}) => {
     clearPhaseTimer(lobbyId)
 
     const ms = durationMs ?? defaultDurations[phase]
