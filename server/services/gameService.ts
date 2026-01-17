@@ -96,7 +96,7 @@ export const prepareGame = async ({ games, lobbyId }) => {
         handSize: 5,
         uniquePerGame: true,
     })
-    if (dealRes?.error) return dealRes
+    if (dealRes && 'error' in dealRes) return dealRes
 
     return { game: games.get(lobbyId) }
 }

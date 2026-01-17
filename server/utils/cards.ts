@@ -2,20 +2,23 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { packExists } from "./packs.js"
+import type { BlackCard, WhiteCard } from "../types/Cards.js"
+import type { PackCards } from "../types/Pack.js"
+import type { Room } from "../types/Room.js"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-const PROJECT_ROOT = path.resolve(__dirname, "../..")
+const PROJECT_ROOT = path.resolve(__dirname, "..", "..", "..")
 
 const CARDS_DIR = path.join(PROJECT_ROOT, "src", "assets", "packs", "cards", "nl")
 
 
-let _cardsByPack = null
+let _cardsByPack: Record<string, PackCards> | null = null
 
-const keyOf = (c) => `${c.pack}:${c.card_id}`
+const keyOf = (c: { pack: string; card_id: number }) => `${c.pack}:${c.card_id}`
 
 
-export const buildWhitePool = (game) => {
+export const buildWhitePool = (game: Room) => {
     const packIds = (game.selectedPacks ?? []).filter(packExists)
     if (!packIds.length) return { error: "no_selected_packs" }
 
@@ -32,7 +35,7 @@ export const buildWhitePool = (game) => {
 }
 
 
-export const buildUsedWhiteSet = (game) => {
+export const buildUsedWhiteSet = (game: Room) => {
     const used = new Set()
     for (const p of game.players ?? []) {
         for (const c of p.white_cards ?? []) used.add(keyOf(c))
@@ -56,27 +59,28 @@ function loadCardsByPack() {
             const json = JSON.parse(fs.readFileSync(path.join(CARDS_DIR, file), "utf8"))
             return [packId, json] // { black:[], white:[] }
         })
-    )
+    ) as Record<string, PackCards>
 
     return _cardsByPack
 }
 
 export const getCardsByPack = () => loadCardsByPack()
 
-export const getPackCards = (packId) => loadCardsByPack()[packId] ?? null
+export const getPackCards = (packId: string) => loadCardsByPack()[packId] ?? null
 
 
-export const pickUniqueRandomBlackCard = (game) => {
+export const pickUniqueRandomBlackCard = (game: Room): BlackCard | null => {
     const packIds = game?.selectedPacks ?? []
     if (!packIds.length) return null
 
 
-    const keyOf = (c) => `${c.pack}:${c.card_id}`
+    const keyOf = (c: { pack: string; card_id: number }) => `${c.pack}:${c.card_id}`
     const rand = (max) => Math.floor(Math.random() * max)
 
 
+    const rounds = Object.values(game.rounds ?? {}) as Array<{ blackCard?: BlackCard | null }>
     const used = new Set(
-        Object.values(game.rounds ?? {})
+        rounds
             .map((r) => r?.blackCard)
             .filter(Boolean)
             .map(keyOf)
@@ -98,7 +102,17 @@ export const pickUniqueRandomBlackCard = (game) => {
     return pool[rand(pool.length)]
 }
 
-export const resolveWhiteCardText = ({ pack, card_id, name, names }) => {
+export const resolveWhiteCardText = ({
+    pack,
+    card_id,
+    name,
+    names,
+}: {
+    pack: string
+    card_id: number
+    name?: string
+    names?: string[]
+}) => {
     if (!packExists(pack)) return null
     const packJson = loadCardsByPack()[pack]
     const text = packJson?.white?.[card_id]
@@ -115,12 +129,12 @@ export const resolveWhiteCardText = ({ pack, card_id, name, names }) => {
     })
 }
 
-export const whiteCardExists = (pack, id) => {
+export const whiteCardExists = (pack: string, id: number) => {
     const cards = loadCardsByPack()[pack]
     return Boolean(cards?.white?.[id])
 }
 
-export const blackCardExists = (pack, id) => {
+export const blackCardExists = (pack: string, id: number) => {
     const cards = loadCardsByPack()[pack]
     return Boolean(cards?.black?.[id])
 }

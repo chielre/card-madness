@@ -3,10 +3,9 @@ import { emitPlayersUpdated } from './emitters.js'
 import { handleStartIntroFlow, startCzarPhase } from '../services/phaseFlowService.js'
 import { clearRoundTimer } from '../utils/roundTimers.js'
 import { clearSelectionLockTimer, getSelectionLockInfo, hasActiveSelectionLocks, scheduleSelectionLockTimer } from '../utils/selectionLockTimers.js'
+import { OTHER_LOCK_BOOST_MS, SELF_LOCK_BOOST_MS } from '../config/player.js'
 
 export const registerPlayerHandlers = ({ io, socket, games }) => {
-    const SELF_LOCK_BOOST_MS = 500
-    const OTHER_LOCK_BOOST_MS = 10
     const clamp01 = (value) => Math.min(1, Math.max(0, value))
 
     const tryStartCzarIfReady = (lobbyId) => {
@@ -15,6 +14,7 @@ export const registerPlayerHandlers = ({ io, socket, games }) => {
         if (gameNow.phase !== 'board') return
         if (!areAllNonSelectorPlayersSelected(gameNow)) return
         if (hasActiveSelectionLocks(lobbyId)) return
+        
         clearRoundTimer(lobbyId)
         startCzarPhase({ io, games, lobbyId, round: gameNow.currentRound })
     }

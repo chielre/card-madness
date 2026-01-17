@@ -13,7 +13,7 @@
 </a>
 </p>
 
-A **mad** HTML5 multiplayer card game based on Card Against Humanity. Built with **Vue 3**, **Node.js**, **Socket.IO** and **[AI](#AI-Disclaimer)**.
+A **mad** HTML5 multiplayer card game based on Card Against Humanity. Built in **Vue 3**, **GSAP**, **Node.js** and **Socket.IO**.
 
 > [!IMPORTANT]
 > Card Madness is currently under active development. Cloning this repository may not provide a fully working game or a functional server. While this notice is present, Card Madness may not run reliably on your machine. 
