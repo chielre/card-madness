@@ -252,7 +252,7 @@ const runIntroAnimation = async () => {
         gsap.set(heroPack, { zIndex: 30 })
     }
 
-    audio.PlayIntroGame();
+    audio.playIntroGame();
 
 
     introTl = gsap
