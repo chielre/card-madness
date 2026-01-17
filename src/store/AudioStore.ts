@@ -321,6 +321,9 @@ export const useAudioStore = defineStore('audio', {
     readyCustomOnce(key: string, src: string) {
       return waitForLoad(this.ensureMusicOneShot(`once:${key}`, src))
     },
+    readyPackMusic(key: string, src: string) {
+      return waitForLoad(this.ensureMusicOneShot(`pack:${key}`, src))
+    },
     readyWrap() {
       return this.readyMusicEffect('wrap', wrapMusic)
     },
@@ -465,6 +468,17 @@ export const useAudioStore = defineStore('audio', {
 
       this.stopAll()
       await this.readyCustomOnce(key, src)
+
+      musicOneShotHowl!.play()
+      this.current = track
+    },
+    async playPackMusicOnce(key: string, src: string) {
+      if (!this.musicEnabled) return
+      const track = `pack:${key}`
+      if (this.current === track) return
+
+      this.stopAll()
+      await this.readyPackMusic(key, src)
 
       musicOneShotHowl!.play()
       this.current = track

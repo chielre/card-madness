@@ -14,6 +14,7 @@ type WhiteCard = {
 type Player = {
     id: string
     name: string,
+    language?: string,
     white_cards: WhiteCard[],
     ready?: boolean
     eligibleFromRound?: number

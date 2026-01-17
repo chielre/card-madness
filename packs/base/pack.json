@@ -1,0 +1,22 @@
+{
+    "id": "base",
+    "name": "Base Pack",
+    "description": "Gewoon leuke situaties over van alles en nog wat. De basis pack die we iedereen aanraden!",
+    "nsfw": false,
+    "author": {
+        "name": "Card Madness",
+        "link": null
+    },
+    "language": {
+        "fallback": "en",
+        "supported_languages": [
+            "nl",
+            "en"
+        ]
+    },
+    "background": [
+        "",
+        "",
+        ""
+    ]
+}

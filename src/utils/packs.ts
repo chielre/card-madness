@@ -1,28 +1,36 @@
-import packsRaw from "@/assets/packs/packs.json"
-
-type PackExtension = {
-    base_pack: string | null
-    extension_subject: string | null
-}
-
-type PackStyle = {
-    background: string
-    logo: string
-    partner_logo: string
-    gradient_from: string,
-    gradient_to: string,
-    music: string
+type PackMeta = {
+    id?: string
+    name?: string
+    author?: {
+        name?: string
+        link?: string | null
+    }
+    description?: string
+    nsfw?: boolean
+    language?: {
+        fallback?: string
+        supported_languages?: string[]
+    }
+    background?: string[]
+    gradient_from?: string
+    gradient_to?: string
 }
 
 export type Pack = {
     id: string
     name: string
-    weight?: number
-    author?: string
+    author?: {
+        name?: string
+        link?: string | null
+    }
     description?: string
-    nsfw?: boolean,
-    extension?: PackExtension
-    style: PackStyle
+    nsfw?: boolean
+    language?: {
+        fallback?: string
+        supported_languages?: string[]
+    }
+    gradient_from: string
+    gradient_to: string
 }
 
 export type ResolvedPack = Pack & {
@@ -30,41 +38,62 @@ export type ResolvedPack = Pack & {
     logoUrl: string
     partnerUrl: string
     musicUrl: string
-    weight: number
-    description: string
+    backgroundColors: string[]
 }
 
 type GlobMap = Record<string, string>
 
-const bgImages = import.meta.glob("@/assets/images/packs/bg/*.png", {
+const packJsons = import.meta.glob("/packs/*/pack.json", {
+    eager: true,
+    import: "default",
+}) as Record<string, PackMeta>
+
+const bgImages = import.meta.glob("/packs/*/background.png", {
     eager: true,
     import: "default",
 }) as GlobMap
 
-const logoImages = import.meta.glob("@/assets/images/packs/*.png", {
+const logoImages = import.meta.glob("/packs/*/logo.png", {
     eager: true,
     import: "default",
 }) as GlobMap
 
-const partnerImages = import.meta.glob("@/assets/images/packs/partner_logos/*.png", {
+const partnerImages = import.meta.glob("/packs/*/partner.png", {
     eager: true,
     import: "default",
 }) as GlobMap
 
-const musicFiles = import.meta.glob("@/assets/audio/*.mp3", {
+const musicFiles = import.meta.glob("/packs/*/music.mp3", {
     eager: true,
     import: "default",
 }) as GlobMap
 
+const DEFAULT_GRADIENT_FROM = "#111827"
+const DEFAULT_GRADIENT_TO = "#4b5563"
 
 let _cache: ResolvedPack[] | null = null
 
-function key(path: string) {
-    return `/src/${path.replace(/^\/?src\//, "").replace(/^\/?/, "")}`
+function packIdFromPath(filePath: string) {
+    return filePath.split("/")[2] ?? ""
 }
 
-function resolveAsset(map: GlobMap, relFromSrc: string): string {
-    return map[key(relFromSrc)] ?? ""
+function mapAssetsByPack(globMap: GlobMap) {
+    return Object.fromEntries(
+        Object.entries(globMap)
+            .map(([path, url]) => [packIdFromPath(path), url])
+            .filter(([packId]) => Boolean(packId))
+    ) as Record<string, string>
+}
+
+function normalizeBackgroundColors(meta: PackMeta): string[] {
+    const input = Array.isArray(meta.background) ? meta.background : []
+    const colors = input.map((value) => String(value).trim()).filter(Boolean)
+    if (colors.length >= 2) return colors
+    if (colors.length === 1) return [colors[0], colors[0]]
+
+    const fallbackFrom = meta.gradient_from ?? DEFAULT_GRADIENT_FROM
+    const fallbackTo = meta.gradient_to ?? DEFAULT_GRADIENT_TO
+    return [fallbackFrom, fallbackTo]
 }
 
 function getResolved(): ResolvedPack[] {
@@ -84,28 +113,31 @@ export function getPackByName(name: string): ResolvedPack | null {
     ) ?? null
 }
 
-export function resolvePacks(input: Pack[] = packsRaw as Pack[]): ResolvedPack[] {
-    return input.map((pack) => {
-        const bgUrl = resolveAsset(bgImages, `assets/images/packs/bg/${pack.style.background}`)
-        const logoUrl = resolveAsset(logoImages, `assets/images/packs/${pack.style.logo}`)
-        const partnerUrl = resolveAsset(
-            partnerImages,
-            `assets/images/packs/partner_logos/${pack.style.partner_logo}`
-        )
+export function resolvePacks(): ResolvedPack[] {
+    const bgMap = mapAssetsByPack(bgImages)
+    const logoMap = mapAssetsByPack(logoImages)
+    const partnerMap = mapAssetsByPack(partnerImages)
+    const musicMap = mapAssetsByPack(musicFiles)
 
-        const musicFile = pack.style.music?.trim() ?? ""
-        const musicUrl = musicFile
-            ? resolveAsset(musicFiles, `assets/audio/${musicFile}`)
-            : ""
+    return Object.entries(packJsons).map(([path, meta]) => {
+        const packId = packIdFromPath(path)
+        const name = meta.name ?? packId
+        const backgroundColors = normalizeBackgroundColors(meta)
 
         return {
-            ...pack,
-            bgUrl,
-            logoUrl,
-            partnerUrl,
-            musicUrl,
-            weight: pack.weight ?? 1,
-            description: pack.description ?? "",
+            id: packId,
+            name,
+            author: meta.author,
+            description: meta.description ?? "",
+            nsfw: meta.nsfw ?? false,
+            language: meta.language,
+            gradient_from: meta.gradient_from ?? DEFAULT_GRADIENT_FROM,
+            gradient_to: meta.gradient_to ?? DEFAULT_GRADIENT_TO,
+            bgUrl: bgMap[packId] ?? "",
+            logoUrl: logoMap[packId] ?? "",
+            partnerUrl: partnerMap[packId] ?? "",
+            musicUrl: musicMap[packId] ?? "",
+            backgroundColors,
         }
     })
 }

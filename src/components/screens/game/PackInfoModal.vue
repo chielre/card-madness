@@ -16,10 +16,10 @@ const open = (packId: string) => {
 
     selectedPackId.value = packId
 
-    document.body.style.backgroundImage = `linear-gradient(135deg, ${targetPack.style.gradient_from}, ${targetPack.style.gradient_to})`
+    document.body.style.backgroundImage = `linear-gradient(135deg, ${targetPack.backgroundColors.join(', ')})`
 
     if (targetPack.musicUrl) {
-        audio.playCustomOnce(`info:${targetPack.id}`, targetPack.musicUrl)
+        audio.playPackMusicOnce(targetPack.id, targetPack.musicUrl)
     }
 }
 
@@ -46,8 +46,6 @@ defineExpose({ open, close })
 
                 <h3 class="text-2xl font-black">{{ selectedPack.name }}</h3>
                 <div class=" font-bold border-2 border-b-4 rounded-full px-2 py-0.5 text-xs" v-if="selectedPack.nsfw">NSFW</div>
-                <div class=" font-bold border-2 border-b-4 rounded-full px-2 py-0.5 text-xs" v-if="selectedPack.extension?.base_pack">extension</div>
-
             </div>
             <p class="mt-6 text-lg leading-relaxed">{{ selectedPack.description }}</p>
             <div class="mt-6 justify-between flex items-center bg-gray-50 rounded-xl p-3">
@@ -60,7 +58,9 @@ defineExpose({ open, close })
                         <img class="" width="75" :src="selectedPack.partnerUrl" alt="">
                     </div>
                     <div v-else class=" text-gray-600">
-                        Pack by <b>{{ selectedPack?.author ?? 'CardMadness' }}</b>
+                        Pack by
+                        <b v-if="selectedPack?.author?.name">{{ selectedPack.author.name }}</b>
+                        <b v-else>CardMadness</b>
                     </div>
                 </div>
 

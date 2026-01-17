@@ -6,6 +6,15 @@ export interface PackCards {
 export interface PackMeta {
     id: string
     name?: string
-    language?: string
+    description?: string
+    nsfw?: boolean
+    author?: {
+        name?: string
+        link?: string | null
+    }
+    language?: {
+        fallback?: string
+        supported_languages?: string[]
+    }
     [key: string]: unknown
 }

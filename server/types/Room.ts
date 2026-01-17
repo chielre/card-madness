@@ -20,6 +20,7 @@ export interface Room {
     lobbyId: string
     host: string
     players: RoomPlayer[]
+    language?: string
     phase: Phase
     currentRound: number
     rounds: Record<number, RoundState>
