@@ -18,7 +18,7 @@ const openInfo = () => {
 </script>
 
 <template>
-    <div class="madness-pack shrink-0  aspect-[0.65/1]  w-full select-none relative rounded-xl border-2 border-black outline-2 outline-white/50 -outline-offset-8 p-8 overflow-hidden text-left transition transform hover:-translate-y-1  active:scale-95  disabled:cursor-not-allowed " :class="selected ? 'scale-95 ring-8 ring-yellow-400/50' : 'group hover:scale-105 hover:-rotate-2 hover:z-20 hover:shadow-2xl '" :style="{ backgroundImage: `linear-gradient(to bottom, ${pack.style.gradient_from}, ${pack.style.gradient_to})` }" :data-pack-id="pack.id" :data-selected="selected ? 'true' : 'false'">
+    <div class="madness-pack shrink-0  aspect-[0.65/1]  w-full select-none relative rounded-xl border-2 border-black outline-2 outline-white/50 -outline-offset-8 p-8 overflow-hidden text-left transition transform hover:-translate-y-1  active:scale-95  disabled:cursor-not-allowed " :class="selected ? 'scale-95 ring-8 ring-yellow-400/50' : 'group hover:scale-105 hover:-rotate-2 hover:z-20 hover:shadow-2xl '" :style="{ backgroundImage: `linear-gradient(to bottom, ${pack.backgroundColors.join(', ')})` }" :data-pack-id="pack.id" :data-selected="selected ? 'true' : 'false'">
 
         <div class="z-20 absolute inset-0 flex items-center justify-center backdrop-blur-xs bg-white/20" :class="selected ? 'block ' : 'hidden'">
             <div class="-rotate-20 text-white font-bold  text-outline-black" :class="selected ? 'text-2xl' : 'text-xl'">selected</div>
@@ -35,18 +35,11 @@ const openInfo = () => {
 
             <div class="relative  group-hover:scale-110 transition duration-250">
                 <img width="180" :src="pack.logoUrl">
-                <img v-if="pack.extension.base_pack" width="120" src="../assets/images/pack_extended.png" class=" absolute bottom-2 right-0 -rotate-12" alt="">
                 <img v-if="pack.nsfw" width="60" src="../assets/images/pack_nsfw.png" class=" absolute bottom-2 left-3 rotate-12" alt="">
             </div>
 
-            <div class="text-outline-black">
-                {{ pack.extension.extension_subject ?? '' }}
-            </div>
-
-            <div>
 
 
-            </div>
 
             <div class="group-hover:translate-y-24 group-hover:scale-0 transition duration-250">
                 <div v-if="pack.partnerUrl" class="flex gap-2">

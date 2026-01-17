@@ -32,6 +32,7 @@ So far, I haven’t found a good, modern, and easy way to play Cards Against Hum
 - Card czar selection ✅
 - audience selection ❌
 - Multi language gameplay ❌
+- Community packs ✅
 
 ## Installation on Windows
 For this project you'll need NodeJS. Go to the [official Node.js website](https://nodejs.org/), download the installer and follow the steps to install NodeJS on your device.
@@ -66,6 +67,21 @@ npm run dev
 
 The server will take over the console and will accept websocket connections on the provided port.
 
+## Install packs
+
+This repository does not contain any packs by default. You are free to create your own packs.
+Alternatively, in a strictly non-commercial context, you may install [the community created packs](https://github.com/chielre/card-madness).
+> [!IMPORTANT]
+> Community packs are licensed under Creative Commons Attribution–NonCommercial–ShareAlike 4.0 (CC BY-NC-SA 4.0) and may not be used for commercial purposes.
+
+Run the install script from the root:
+```BASH
+cd card-madness
+npm run install-packs
+```
+
+### Automatic installation
+Refer to the .env files to automatically download and install packs during the build process.
 
 ## Disclaimer
 
