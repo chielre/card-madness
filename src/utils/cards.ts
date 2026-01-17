@@ -22,25 +22,63 @@ export type ResolvedCard = WhiteCardInput & {
 
 type GlobJsonMap = Record<string, CardPackRaw>
 
-const cardJsons = import.meta.glob("@/assets/packs/cards/nl/*.json", {
+const DEFAULT_LANGUAGE = "nl"
+
+const cardJsons = import.meta.glob("/packs/*/cards/*.json", {
     eager: true,
     import: "default",
 }) as GlobJsonMap
 
-let _cardsByPack: Record<string, CardPackRaw> | null = null
+type CardsByPack = Record<string, CardPackRaw>
+const cardsByLanguage: Record<string, CardsByPack> = {}
 
-function toPackId(path: string) {
-    return path.split("/").pop()!.replace(/\.json$/i, "")
+function parseCardPath(filePath: string) {
+    const parts = filePath.split("/")
+    const packId = parts[2] ?? ""
+    const langFile = parts[4] ?? ""
+    const language = langFile.replace(/\.json$/i, "")
+    return { packId, language }
 }
 
-function getCardsByPack(): Record<string, CardPackRaw> {
-    if (_cardsByPack) return _cardsByPack
+function buildCardsByLanguage() {
+    if (Object.keys(cardsByLanguage).length) return
 
-    _cardsByPack = Object.fromEntries(
-        Object.entries(cardJsons).map(([path, json]) => [toPackId(path), json])
-    )
+    for (const [path, json] of Object.entries(cardJsons)) {
+        const { packId, language } = parseCardPath(path)
+        if (!packId || !language) continue
+        cardsByLanguage[language] = cardsByLanguage[language] ?? {}
+        cardsByLanguage[language][packId] = json
+    }
+}
 
-    return _cardsByPack
+function getCardsByPack(language = DEFAULT_LANGUAGE): Record<string, CardPackRaw> {
+    buildCardsByLanguage()
+    const result: Record<string, CardPackRaw> = {}
+    const packIds = new Set<string>()
+
+    for (const packMap of Object.values(cardsByLanguage)) {
+        Object.keys(packMap).forEach((packId) => packIds.add(packId))
+    }
+
+    for (const packId of packIds) {
+        const pack = getPackById(packId)
+        const supported = pack?.language?.supported_languages
+        const allowRequested = !supported || supported.includes(language)
+        const fallbackLanguage = pack?.language?.fallback?.trim() || DEFAULT_LANGUAGE
+        const candidates = [
+            allowRequested ? language : "",
+            fallbackLanguage,
+            DEFAULT_LANGUAGE,
+        ].filter(Boolean)
+
+        const picked = candidates
+            .map((lang) => cardsByLanguage[lang]?.[packId])
+            .find(Boolean)
+
+        if (picked) result[packId] = picked
+    }
+
+    return result
 }
 
 function escapeHtml(value: string) {
@@ -77,8 +115,8 @@ function hydrate(text: string, name?: string, names?: string[], answerHtml?: str
         .replace(/:answer/g, formatAnswerHtml(answerHtml))
 }
 
-export function resolveWhiteCards(cards: WhiteCardInput[]): ResolvedCard[] {
-    const cardsByPack = getCardsByPack()
+export function resolveWhiteCards(cards: WhiteCardInput[], language = DEFAULT_LANGUAGE): ResolvedCard[] {
+    const cardsByPack = getCardsByPack(language)
 
     return cards.map(({ pack, card_id, name, names }) => {
         if (!getPackById(pack)) throw new Error(`Unknown pack: ${pack}`)
@@ -93,8 +131,8 @@ export function resolveWhiteCards(cards: WhiteCardInput[]): ResolvedCard[] {
     })
 }
 
-export function resolveBlackCard(card: BlackCardInput, answerHtml?: string): ResolvedCard {
-    const cardsByPack = getCardsByPack()
+export function resolveBlackCard(card: BlackCardInput, answerHtml?: string, language = DEFAULT_LANGUAGE): ResolvedCard {
+    const cardsByPack = getCardsByPack(language)
 
     if (!getPackById(card.pack)) throw new Error(`Unknown pack: ${card.pack}`)
 

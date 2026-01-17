@@ -8,15 +8,39 @@ const __dirname = path.dirname(__filename)
 
 const PROJECT_ROOT = path.resolve(__dirname, "..", "..", "..")
 
-const PACKS_DIR = path.join(PROJECT_ROOT, "src", "assets", "packs")
-const PACKS_META_FILE = path.join(PACKS_DIR, "packs.json")
+const DEFAULT_PACKS_DIR = path.join(PROJECT_ROOT, "packs")
+const PACKS_DIR = (() => {
+    const envPath = process.env.PACKS_DIR?.trim()
+    if (!envPath) return DEFAULT_PACKS_DIR
+    return path.isAbsolute(envPath) ? envPath : path.resolve(PROJECT_ROOT, envPath)
+})()
 
 let _packs: PackMeta[] | null = null
 
 function loadPacks() {
     if (_packs) return _packs
-    const raw = fs.readFileSync(PACKS_META_FILE, "utf8")
-    _packs = JSON.parse(raw)
+    if (!fs.existsSync(PACKS_DIR)) {
+        _packs = []
+        return _packs
+    }
+
+    const entries = fs.readdirSync(PACKS_DIR, { withFileTypes: true })
+    const packDirs = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name)
+
+    _packs = packDirs.map((packId) => {
+        const packJsonPath = path.join(PACKS_DIR, packId, "pack.json")
+        let data: Record<string, unknown> = {}
+        if (fs.existsSync(packJsonPath)) {
+            try {
+                const raw = fs.readFileSync(packJsonPath, "utf8").trim()
+                data = raw ? JSON.parse(raw) : {}
+            } catch {
+                data = {}
+            }
+        }
+        return { ...data, id: packId } as PackMeta
+    })
+
     return _packs
 }
 export const getPacks = () => loadPacks()

@@ -2,8 +2,6 @@
 node_modules
 dist/
 
-
-
 # env files
 .env.local
 .env.*.local
@@ -16,6 +14,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+packs/**
+!packs/.gitignore
 
 # Editor directories and files
 .idea

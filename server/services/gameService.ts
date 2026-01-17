@@ -1,27 +1,28 @@
 import { nanoid } from 'nanoid'
 import { getPacks, packExists } from '../utils/packs.js'
 import {
-    getCardsByPack,
     getPackCards,
     pickUniqueRandomBlackCard,
     buildWhitePool,
     buildUsedWhiteSet,
     whiteCardExists,
-    blackCardExists
+    blackCardExists,
+    pickFairWhiteCard
 } from '../utils/cards.js'
 
 const MAX_PLAYER_NAME_LENGTH = 25
 const normalizeName = (name) => (name ?? '').toString().trim()
 const normalizeLanguage = (language) => (language ?? '').toString().trim() || 'nl'
+const getGameLanguage = (game) => normalizeLanguage(game?.language)
 
-const keyOf = (c) => `${c.pack}:${c.card_id}`
+const keyOf = (c): string => `${c.pack}:${c.card_id}`
 const rand = (max) => Math.floor(Math.random() * max)
 const randomPlayerLobbyName = (players) => players[rand(players.length)]?.name ?? ""
 const countNameSlots = (text) => (text?.match(/:name/g) ?? []).length
 const pickRandomLobbyNames = (players, count) =>
     Array.from({ length: count }, () => randomPlayerLobbyName(players))
-const getWhiteCardText = (pack, cardId) => getPackCards(pack)?.white?.[cardId] ?? ""
-const getBlackCardText = (pack, cardId) => getPackCards(pack)?.black?.[cardId] ?? ""
+const getWhiteCardText = (pack, cardId, language) => getPackCards(pack, language)?.white?.[cardId] ?? ""
+const getBlackCardText = (pack, cardId, language) => getPackCards(pack, language)?.black?.[cardId] ?? ""
 const buildCardNames = (players, text) => {
     const slotCount = countNameSlots(text)
     if (!slotCount) return []
@@ -43,6 +44,7 @@ export const createGame = ({ games, hostId, hostName, language }) => {
             white_cards: [],
             eligibleFromRound: 1
         }],
+        language: hostLanguage,
         phase: 'lobby',
         currentRound: 0,
         rounds: {},
@@ -111,9 +113,9 @@ export const givePlayersWhiteCards = async ({ games, lobbyId, handSize = 5, uniq
     game.players = game.players ?? []
     if (!game.players.length) return { error: "no_players" }
 
-    const poolRes = buildWhitePool(game)
+    const poolRes = buildWhitePool(game, getGameLanguage(game))
     if (poolRes.error) return poolRes
-    const { pool } = poolRes
+    const { packIds, cardsByPack } = poolRes
 
     const used = uniquePerGame ? buildUsedWhiteSet(game) : null
 
@@ -121,15 +123,17 @@ export const givePlayersWhiteCards = async ({ games, lobbyId, handSize = 5, uniq
         player.white_cards = player.white_cards ?? []
 
         while (player.white_cards.length < handSize) {
-            const localUsed = new Set(player.white_cards.map(keyOf))
+            const localUsed = new Set<string>(player.white_cards.map(keyOf))
 
-            const candidates = pool.filter((c) =>
-                uniquePerGame ? !used.has(keyOf(c)) : !localUsed.has(keyOf(c))
-            )
-            if (!candidates.length) return { error: "not_enough_white_cards" }
+            const picked = pickFairWhiteCard({
+                packIds,
+                cardsByPack,
+                used,
+                localUsed,
+            })
+            if (!picked) return { error: "not_enough_white_cards" }
 
-            const picked = candidates[rand(candidates.length)]
-            const text = getWhiteCardText(picked.pack, picked.card_id)
+            const text = getWhiteCardText(picked.pack, picked.card_id, getGameLanguage(game))
             const names = buildCardNames(game.players, text)
             player.white_cards.push(names.length ? { ...picked, names } : { ...picked })
             if (uniquePerGame) used.add(keyOf(picked))
@@ -156,20 +160,22 @@ export const givePlayerOneWhiteCard = async ({ games, lobbyId, playerId, uniqueP
         return { game, player } // niets doen
     }
 
-    const poolRes = buildWhitePool(game)
+    const poolRes = buildWhitePool(game, getGameLanguage(game))
     if (poolRes.error) return poolRes
-    const { pool } = poolRes
+    const { packIds, cardsByPack } = poolRes
 
     const used = uniquePerGame ? buildUsedWhiteSet(game) : null
-    const localUsed = new Set(player.white_cards.map(keyOf))
+    const localUsed = new Set<string>(player.white_cards.map(keyOf))
 
-    const candidates = pool.filter((c) =>
-        uniquePerGame ? !used.has(keyOf(c)) : !localUsed.has(keyOf(c))
-    )
-    if (!candidates.length) return { error: "not_enough_white_cards" }
+    const picked = pickFairWhiteCard({
+        packIds,
+        cardsByPack,
+        used,
+        localUsed,
+    })
+    if (!picked) return { error: "not_enough_white_cards" }
 
-    const picked = candidates[rand(candidates.length)]
-    const text = getWhiteCardText(picked.pack, picked.card_id)
+    const text = getWhiteCardText(picked.pack, picked.card_id, getGameLanguage(game))
     const names = buildCardNames(game.players, text)
     const card = names.length ? { ...picked, names } : { ...picked }
 
@@ -322,10 +328,10 @@ export const prepareRound = ({ games, lobbyId, round }) => {
     }
 
     // 2) random black card from selected packs
-    const uniqueBlackCard = pickUniqueRandomBlackCard(game)
+    const uniqueBlackCard = pickUniqueRandomBlackCard(game, getGameLanguage(game))
     if (!uniqueBlackCard) return { error: "no_black_cards_left" }
 
-    const blackText = getBlackCardText(uniqueBlackCard.pack, uniqueBlackCard.card_id)
+    const blackText = getBlackCardText(uniqueBlackCard.pack, uniqueBlackCard.card_id, getGameLanguage(game))
     const blackNames = buildCardNames(game.players, blackText)
     targetRound.blackCard = blackNames.length
         ? { ...uniqueBlackCard, names: blackNames }
@@ -570,21 +576,23 @@ export const givePlayerHand = async ({ games, lobbyId, playerId, handSize = 5, u
         return { game, player }
     }
 
-    const poolRes = buildWhitePool(game)
+    const poolRes = buildWhitePool(game, getGameLanguage(game))
     if (poolRes.error) return poolRes
-    const { pool } = poolRes
+    const { packIds, cardsByPack } = poolRes
 
     const used = uniquePerGame ? buildUsedWhiteSet(game) : null
 
     while (player.white_cards.length < handSize) {
-        const localUsed = new Set(player.white_cards.map(keyOf))
-        const candidates = pool.filter((c) =>
-            uniquePerGame ? !used.has(keyOf(c)) : !localUsed.has(keyOf(c))
-        )
-        if (!candidates.length) return { error: "not_enough_white_cards" }
+        const localUsed = new Set<string>(player.white_cards.map(keyOf))
+        const picked = pickFairWhiteCard({
+            packIds,
+            cardsByPack,
+            used,
+            localUsed,
+        })
+        if (!picked) return { error: "not_enough_white_cards" }
 
-        const picked = candidates[rand(candidates.length)]
-        const text = getWhiteCardText(picked.pack, picked.card_id)
+        const text = getWhiteCardText(picked.pack, picked.card_id, getGameLanguage(game))
         const names = buildCardNames(game.players, text)
         player.white_cards.push(names.length ? { ...picked, names } : { ...picked })
         if (uniquePerGame) used.add(keyOf(picked))

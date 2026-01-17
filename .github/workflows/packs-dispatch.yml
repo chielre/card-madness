@@ -1,0 +1,23 @@
+name: Update Packs (Dispatch)
+
+on:
+  repository_dispatch:
+    types: [packs-updated]
+
+jobs:
+  update-packs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Update packs
+        run: npm run update-packs
