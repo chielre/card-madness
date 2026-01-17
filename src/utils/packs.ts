@@ -39,6 +39,7 @@ export type ResolvedPack = Pack & {
     partnerUrl: string
     musicUrl: string
     backgroundColors: string[]
+    deprecated: boolean
 }
 
 type GlobMap = Record<string, string>
@@ -64,6 +65,11 @@ const partnerImages = import.meta.glob("/packs/*/partner.png", {
 }) as GlobMap
 
 const musicFiles = import.meta.glob("/packs/*/music.mp3", {
+    eager: true,
+    import: "default",
+}) as GlobMap
+
+const deprecatedFiles = import.meta.glob("/packs/*/DEPRECATED.md", {
     eager: true,
     import: "default",
 }) as GlobMap
@@ -118,6 +124,7 @@ export function resolvePacks(): ResolvedPack[] {
     const logoMap = mapAssetsByPack(logoImages)
     const partnerMap = mapAssetsByPack(partnerImages)
     const musicMap = mapAssetsByPack(musicFiles)
+    const deprecatedMap = mapAssetsByPack(deprecatedFiles)
 
     return Object.entries(packJsons).map(([path, meta]) => {
         const packId = packIdFromPath(path)
@@ -138,6 +145,7 @@ export function resolvePacks(): ResolvedPack[] {
             partnerUrl: partnerMap[packId] ?? "",
             musicUrl: musicMap[packId] ?? "",
             backgroundColors,
+            deprecated: Boolean(deprecatedMap[packId]),
         }
     })
 }

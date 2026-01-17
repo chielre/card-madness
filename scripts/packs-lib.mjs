@@ -123,6 +123,7 @@ async function copyPackDirs(sourceDir, targetDir, filter) {
   const entries = await fs.readdir(sourceDir, { withFileTypes: true })
   for (const entry of entries) {
     if (!entry.isDirectory()) continue
+    if (entry.name === ".github") continue
     const src = path.join(sourceDir, entry.name)
     if (!(await shouldIncludePack(src, entry.name, filter))) continue
     const dst = path.join(targetDir, entry.name)
