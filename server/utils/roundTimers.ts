@@ -2,9 +2,8 @@ import { roundTimers } from '../state/store.js'
 
 export const clearRoundTimer = (lobbyId) => {
     const existing = roundTimers.get(lobbyId)
-    const timer = existing?.timer ?? existing
-    if (timer) {
-        clearTimeout(timer)
+    if (existing?.timer) {
+        clearTimeout(existing.timer)
     }
     roundTimers.delete(lobbyId)
 }

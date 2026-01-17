@@ -12,9 +12,8 @@ export const clearSelectionLockTimer = ({ lobbyId, playerId }) => {
     const lobbyTimers = selectionLockTimers.get(lobbyId)
     if (!lobbyTimers) return
     const existing = lobbyTimers.get(playerId)
-    const timer = existing?.timer ?? existing
-    if (timer) {
-        clearTimeout(timer)
+    if (existing?.timer) {
+        clearTimeout(existing.timer)
     }
     lobbyTimers.delete(playerId)
     if (!lobbyTimers.size) {
@@ -26,8 +25,7 @@ export const clearSelectionLockTimers = (lobbyId) => {
     const lobbyTimers = selectionLockTimers.get(lobbyId)
     if (!lobbyTimers) return
     lobbyTimers.forEach((value) => {
-        const timer = value?.timer ?? value
-        if (timer) clearTimeout(timer)
+        if (value?.timer) clearTimeout(value.timer)
     })
     selectionLockTimers.delete(lobbyId)
 }

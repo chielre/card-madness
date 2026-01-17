@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import type { PackMeta } from "../types/Pack.js"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -10,7 +11,7 @@ const PROJECT_ROOT = path.resolve(__dirname, "..", "..", "..")
 const PACKS_DIR = path.join(PROJECT_ROOT, "src", "assets", "packs")
 const PACKS_META_FILE = path.join(PACKS_DIR, "packs.json")
 
-let _packs = null
+let _packs: PackMeta[] | null = null
 
 function loadPacks() {
     if (_packs) return _packs
@@ -20,12 +21,12 @@ function loadPacks() {
 }
 export const getPacks = () => loadPacks()
 
-export const getPackById = (id) => {
+export const getPackById = (id: string) => {
     if (!id) return null
     return loadPacks().find((p) => p.id === id) ?? null
 }
 
-export const packExists = (id) => !!getPackById(id)
+export const packExists = (id: string) => !!getPackById(id)
 
 // (optioneel) voor tests/dev
 export const _resetPacksCache = () => {

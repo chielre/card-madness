@@ -2,9 +2,8 @@ import { phaseTimers } from '../state/store.js'
 
 export const clearPhaseTimer = (lobbyId) => {
     const existing = phaseTimers.get(lobbyId)
-    const timer = existing?.timer ?? existing
-    if (timer) {
-        clearTimeout(timer)
+    if (existing?.timer) {
+        clearTimeout(existing.timer)
     }
     phaseTimers.delete(lobbyId)
 }
