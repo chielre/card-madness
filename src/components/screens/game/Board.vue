@@ -11,11 +11,16 @@ import { useConnectionStore } from "@/store/ConnectionStore"
 import { useAudioStore } from "@/store/AudioStore"
 import { useUiStore } from '@/store/UiStore'
 
+// CHECK config
 import CzarCursor from "@/components/game/CzarCursor.vue"
 import { CZAR_HOVER_TYPE_MS } from "@/components/game/czarCursorConfig"
+
 import BoardTimer from "@/components/game/BoardTimer.vue"
+
+// CHECK config
 import SelectedCardsGrid from "@/components/game/SelectedCardsGrid.vue"
 import { usePendingSelections } from "@/components/game/usePendingSelections"
+
 import BaseButton from "../../../components/ui/BaseButton.vue"
 
 const lobby = useLobbyStore()
@@ -24,32 +29,25 @@ const connection = useConnectionStore()
 const ui = useUiStore()
 
 
-/* ---------- refs ---------- */
 const handRef = ref<HTMLElement | null>(null)
 const playRef = ref<HTMLElement | null>(null)
 const boardGridRef = ref<HTMLElement | null>(null)
 const boardAreaRef = ref<HTMLElement | null>(null)
 const sortableRef = ref<Sortable | null>(null)
-
 const BlackCardRef = ref<HTMLElement | null>(null)
 const czarCursorComponentRef = ref<InstanceType<typeof CzarCursor> | null>(null)
 
-/* ---------- computed ---------- */
+
+const currentPlayerId = computed(() => lobby.getCurrentPlayerId())
 const currentPlayerCards = computed(() => lobby.getCurrentPlayerWhiteCards())
-const isCurrentPlayerCardSelector = computed(() => lobby.getCurrentPlayerIsCardSelector())
-const currentPlayer = computed(() => lobby.getCurrentPlayer())
+const isCurrentPlayerCzar = computed(() => lobby.getCurrentPlayerIsCzar())
 const isBoardPhase = computed(() => lobby.phase === "board")
 const isCzarPhase = computed(() => lobby.phase === "czar")
 const isRevealPhase = computed(() => isCzarPhase.value)
 const isRoundActive = computed(() => isBoardPhase.value && lobby.roundStartedTick > lobby.roundTimeoutTick)
-const isWaitingForRound = computed(() => {
-    const player = currentPlayer.value
-    if (!player) return false
-    if (!lobby.currentRoundNumber) return false
-    if (!["board", "czar"].includes(lobby.phase)) return false
-    const eligibleFromRound = Number(player.eligibleFromRound) || 1
-    return eligibleFromRound > lobby.currentRoundNumber
-})
+const isWaitingForRound = computed(() => lobby.isCurrentPlayerWaitingForRound())
+
+
 
 const canKickPlayer = (playerId: string) =>
     lobby.getCurrentPlayerIsHost() && playerId !== connection.getSocketSafe()?.id
@@ -95,7 +93,6 @@ const LOCK_BOOST_PULSE_MS = 220
 let czarHoverPlayerId: string | null = null
 const czarRevealReady = ref(false)
 
-const getCurrentPlayerId = () => lobby.getCurrentPlayer()?.id ?? null
 
 const {
     isCardPending,
@@ -110,7 +107,7 @@ const {
     handRef,
     playRef,
     boardGridRef,
-    getCurrentPlayerId,
+    currentPlayerId,
     cardLockWindowMs: CARD_LOCK_WINDOW_MS,
     lockBoostPulseMs: LOCK_BOOST_PULSE_MS,
 })
@@ -244,13 +241,15 @@ function onPointerUp() {
 }
 
 function onPointerDown(e: PointerEvent) {
-    if (!isBoardPhase.value) return
-    if (isCurrentPlayerCardSelector.value) return
+    if (e.button !== 0 && e.pointerType === "mouse") return
+
+    if (!lobby.canCurrentPlayerPlayCard()) return
+
     const el = (e.target as HTMLElement | null)?.closest?.(".draggable-card") as HTMLElement | null
     if (!el) return
-    const currentId = getCurrentPlayerId()
+    const currentId = currentPlayerId.value
+    
     if (currentId && playRef.value?.contains(el) && isUnselectBlocked(currentId)) return
-    if (e.button !== 0 && e.pointerType === "mouse") return
     if (currentId && playRef.value?.contains(el)) {
         requestLockBoost(currentId)
     }
@@ -307,10 +306,7 @@ function getCardFromEl(el: HTMLElement) {
     const pack = el.dataset.pack
     const cardId = el.dataset.cardId
     if (!pack || !cardId) return null
-    return (
-        lobby.getCurrentPlayerWhiteCards().find((c) => c.pack === pack && String(c.card_id) === String(cardId)) ??
-        null
-    )
+    return lobby.getCurrentPlayerWhiteCard(pack, cardId)
 }
 
 function emitCardFromElement(el: HTMLElement, action: "selected" | "unselected") {
@@ -342,7 +338,7 @@ function getPlayDropPosition() {
 function spawnSelectedCardAnim(cardText: string, action: "selected" | "unselected", playerId?: string) {
     const pos = getPlayDropPosition()
     if (!pos) return
-    const currentId = getCurrentPlayerId()
+    const currentId = currentPlayerId.value
     if (action === "unselected" && playerId && currentId && playerId === currentId) return
 
     if (action === "selected" && playerId) {
@@ -467,15 +463,14 @@ function typeBlackCardAnswerText(targetText: string, durationMs: number) {
 }
 
 function getHoverAnswerText(playerId: string) {
-    const entry = selectedCards.value.find((item) => item.playerId === playerId)
-    if (!entry) return ""
+    const entry = selectedCards.value.find(i => i.playerId === playerId)
+    if (!entry?.resolved?.text) return ""
+
     const blackCard = lobby.currentRound?.blackCard
     if (!blackCard) return ""
-    const answerHtml = entry.resolved?.text
-        ?? (entry.card ? resolveWhiteCards([entry.card])[0]?.text : "")
-    if (!answerHtml) return ""
+
     try {
-        const full = resolveBlackCard(blackCard, answerHtml).text
+        const full = resolveBlackCard(blackCard, entry.resolved.text).text
         return getAnswerTextFromHtml(full)
     } catch {
         return ""
@@ -544,9 +539,6 @@ function animateNextBlackCardIn() {
             ease: "power2.in",
         })
 }
-
-/* ---------- expose ---------- */
-const runIntroAnimation = () => { }
 
 /* ---------- watchers ---------- */
 function handleRoundStarted(tick: number) {
@@ -630,16 +622,11 @@ onMounted(() => {
     })
 
     sortable.on("drag:start", (evt: any) => {
-        if (!isBoardPhase.value || isCurrentPlayerCardSelector.value) {
-            evt.cancel()
-            return
-        }
-        if (isWaitingForRound.value) {
-            evt.cancel()
-            return
+        if (!lobby.canCurrentPlayerPlayCard()) {
+            evt.cancel(); return
         }
 
-        const currentId = getCurrentPlayerId()
+        const currentId = currentPlayerId.value
         if (currentId && isUnselectBlocked(currentId)) {
             evt.cancel()
             return
@@ -691,7 +678,7 @@ onMounted(() => {
             const { x, y } = getPointerPosition(evt)
             const overPlay = isOverPlaySlot(x, y)
             const wasInPlay = drag.startInPlay
-            const currentId = getCurrentPlayerId()
+            const currentId = currentPlayerId.value
             const unselectBlocked = currentId ? isUnselectBlocked(currentId) : false
             const shouldUnselect = wasInPlay && !overPlay && !unselectBlocked
 
@@ -746,12 +733,11 @@ onBeforeUnmount(() => {
     resetPendingSelections()
 })
 
-defineExpose({ runIntroAnimation })
 </script>
 
 <template>
     <div class="flex justify-center items-center">
-        <CzarCursor ref="czarCursorComponentRef" :board-area-ref="boardAreaRef" :board-grid-ref="boardGridRef" :black-card-ref="BlackCardRef" :is-czar-phase="isCzarPhase" :is-current-player-card-selector="isCurrentPlayerCardSelector" :czar-reveal-ready="czarRevealReady" @hover-change="startCzarHoverTyping" />
+        <CzarCursor ref="czarCursorComponentRef" :board-area-ref="boardAreaRef" :board-grid-ref="boardGridRef" :black-card-ref="BlackCardRef" :is-czar-phase="isCzarPhase" :is-current-player-card-selector="isCurrentPlayerCzar" :czar-reveal-ready="czarRevealReady" @hover-change="startCzarHoverTyping" />
 
         <div>
             <!-- timer -->
@@ -802,7 +788,7 @@ defineExpose({ runIntroAnimation })
                 </div>
 
                 <div ref="boardGridRef" class="-ml-6 bg-[#2b0246] grid grid-cols-5 gap-8 w-3xl border-4 backdrop-blur-sm rounded-xl border-black p-6 transition-all" style="position: relative; perspective: 1200px">
-                    <div v-show="isRoundActive && !isCurrentPlayerCardSelector && !isWaitingForRound" class="play-zone">
+                    <div v-show="isRoundActive && !isCurrentPlayerCzar && !isWaitingForRound" class="play-zone">
                         <div ref="playRef" class="play-slot">
                             <div class="madness-card card-white card-responsive play-slot-mirror" aria-hidden="true"></div>
                             <div class="play-placeholder border-3 border-dashed border-white/60 rounded-xl text-white/70 px-6 py-8 text-center text-sm">
@@ -816,10 +802,10 @@ defineExpose({ runIntroAnimation })
             </div>
 
             <div class="absolute bottom-0 left-0 right-0 flex justify-center">
-                <div v-show="isRoundActive" ref="handRef" class="hand-deck z-10 relative" :class="{ 'hand-deck--active': isRoundActive, 'hand-deck--czar': isCurrentPlayerCardSelector }">
+                <div v-show="isRoundActive" ref="handRef" class="hand-deck z-10 relative" :class="{ 'hand-deck--active': isRoundActive, 'hand-deck--czar': isCurrentPlayerCzar }">
                     <div v-for="(white_card, index) in currentPlayerCards" :key="`${white_card.pack}-${white_card.card_id}-${index}`" class="madness-card card-white card-sm draggable-card" :data-pack="white_card.pack" :data-card-id="white_card.card_id" v-html="white_card.text"></div>
 
-                    <div v-if="isCurrentPlayerCardSelector" class="hand-czar-banner">Jij bent de Card Czar</div>
+                    <div v-if="isCurrentPlayerCzar" class="hand-czar-banner">Jij bent de Card Czar</div>
                     <div v-if="isWaitingForRound" class="hand-czar-banner">Je doet mee vanaf de volgende ronde</div>
                 </div>
             </div>

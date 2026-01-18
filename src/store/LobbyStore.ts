@@ -98,7 +98,6 @@ export const useLobbyStore = defineStore('lobby', {
         getCurrentSocketId(): string | null {
             return useConnectionStore().getSocketSafe()?.id ?? null
         },
-
         getCurrentPlayer(): Player | null {
             const conn = useConnectionStore()
             const socketId = conn.getSocketSafe()?.id
@@ -106,20 +105,24 @@ export const useLobbyStore = defineStore('lobby', {
 
             return this.getPlayer(socketId) ?? null
         },
-
+        getCurrentPlayerId(): string | null {
+            return this.getCurrentSocketId()
+        },
         getCurrentPlayerOrFail(): Player | Error {
             const player = this.getCurrentPlayer()
             if (!player) throw new Error('Current player is not set')
 
             return player
         },
-
-
         getCurrentPlayerWhiteCards(): WhiteCard[] {
             const player = this.getCurrentPlayer();
             if (!player) return []
 
             return resolveWhiteCards(player.white_cards ?? [])
+        },
+        getCurrentPlayerWhiteCard(pack: string, cardId: number | string): WhiteCard | null {
+            return this.getCurrentPlayerWhiteCards()
+                .find(c => c.pack === pack && String(c.card_id) === String(cardId)) ?? null
         },
         getCurrentPlayerIsHost(): boolean {
             const socketId = this.getCurrentSocketId()
@@ -127,11 +130,26 @@ export const useLobbyStore = defineStore('lobby', {
 
             return socketId === this.host
         },
+        isCurrentPlayerWaitingForRound(): boolean {
+            const p = this.getCurrentPlayer()
+            if (!p || !this.currentRoundNumber) return false
+            if (!['board', 'czar'].includes(this.phase)) return false
+            const eligibleFromRound = Number(p.eligibleFromRound) || 1
+            return eligibleFromRound > this.currentRoundNumber
+        },
+        isCurrentPlayerEligibleForRound(): boolean {
+            return !this.isCurrentPlayerWaitingForRound()
+        },
         getCurrentCzar(): Player | null {
             const id = this.currentRound?.cardSelector?.player
             if (!id) return null
 
             return this.players.find(p => p.id === id) ?? null
+        },
+        canCurrentPlayerPlayCard(): boolean {
+            return this.phase === 'board'
+                && !this.getCurrentPlayerIsCzar()
+                && !this.isCurrentPlayerWaitingForRound()
         },
         isPlayerCzar(playerId: string): boolean {
             return playerId === this.currentRound?.cardSelector?.player
@@ -166,13 +184,9 @@ export const useLobbyStore = defineStore('lobby', {
         playerExists(id: string): boolean {
             return this.getPlayer(id) !== null
         },
-
-
-
         setPhase(phase: string) {
             this.phase = phase
         },
-
         async createLobby(hostName: string, language?: string) {
             const conn = useConnectionStore()
             const res = await conn.emitWithAck<{ lobbyId?: string; selectedPacks?: string[]; error?: string }>('room:create', { hostName, language })
@@ -446,6 +460,8 @@ export const useLobbyStore = defineStore('lobby', {
             if (!socket) return
             socket.emit("player:card-lock-boost", { lobbyId: this.lobbyId, playerId })
         },
+
+
 
     },
 })
