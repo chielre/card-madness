@@ -20,7 +20,7 @@ import ToggleSwitch from "@/components/ui/ToggleSwitch.vue"
 import BaseButton from "@/components/ui/BaseButton.vue"
 import CardPack from '@/components/CardPack.vue'
 
-import ReadyListModal from '@/components/screens/gameroom/modals/ReadyListModal.vue'
+import ReadyListModal from '@/components/modals/game/ReadyListModal.vue'
 import PackInfoModal from '@/components/modals/PackInfoModal.vue'
 
 const lobby = useLobbyStore()

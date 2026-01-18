@@ -8,7 +8,7 @@ import { PHASE_DEFAULT_DURATIONS } from '../config/phaseDurations.js'
 import { emitPlayersUpdated } from '../io/emitters.js'
 
 const shouldSkipIntro = () =>
-    process.env.STAGE === 'development' && String(process.env.DEV_PLAY_INTRO) === '0'
+    process.env.STAGE === 'development' && String(process.env.DEV_SKIP_INTRO) === '1'
 
 /**
  * Handles the "Start of the game".

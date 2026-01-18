@@ -11,11 +11,11 @@ import { useConnectionStore } from "@/store/ConnectionStore"
 import { useAudioStore } from "@/store/AudioStore"
 import { useUiStore } from '@/store/UiStore'
 
-import CzarCursor from "@/components/screens/gameroom/components/CzarCursor.vue"
-import { CZAR_HOVER_TYPE_MS } from "@/components/screens/gameroom/components/czarCursorConfig"
-import BoardTimer from "@/components/screens/gameroom/components/BoardTimer.vue"
-import SelectedCardsGrid from "@/components/screens/gameroom/components/SelectedCardsGrid.vue"
-import { usePendingSelections } from "@/components/screens/gameroom/components/usePendingSelections"
+import CzarCursor from "@/components/game/CzarCursor.vue"
+import { CZAR_HOVER_TYPE_MS } from "@/components/game/czarCursorConfig"
+import BoardTimer from "@/components/game/BoardTimer.vue"
+import SelectedCardsGrid from "@/components/game/SelectedCardsGrid.vue"
+import { usePendingSelections } from "@/components/game/usePendingSelections"
 import BaseButton from "../../../components/ui/BaseButton.vue"
 
 const lobby = useLobbyStore()

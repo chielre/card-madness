@@ -2,7 +2,7 @@
 import { computed, onMounted, watch } from "vue"
 import { useConnectionStore } from "@/store/ConnectionStore"
 import { useLobbyStore } from "@/store/LobbyStore"
-import GameRoomScreen from "@/components/screens/GameRoom.vue"
+import GameRoomScreen from "@/components/screens/Game.vue"
 
 const connection = useConnectionStore()
 const lobby = useLobbyStore()

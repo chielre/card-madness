@@ -6,10 +6,8 @@ import { useLobbyStore } from '@/store/LobbyStore'
 import { useAudioStore } from '@/store/AudioStore'
 import { useUiStore } from '@/store/UiStore'
 
-// Screens (optioneel te gebruiken)
 import JoinScreen from '@/components/screens/Join.vue'
-import GameRoomScreen from '@/components/screens/GameRoom.vue'
-
+import GameScreen from '@/components/screens/Game.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -34,6 +32,11 @@ const players = computed(() => lobby.players)
 const hasJoined = computed(() => {
     if (!socket) return false
     return !!players.value.find((p) => p.id === socket?.id)
+})
+const shouldSkipName = computed(() => {
+    const stage = (import.meta as any).env?.STAGE
+    const skipName = (import.meta as any).env?.DEV_SKIP_NAME
+    return stage === 'development' && String(skipName) === '1'
 })
 
 const normalizePlayers = (playerList: { id: string; name: string; ready?: boolean; points?: number }[]) =>
@@ -242,6 +245,10 @@ onMounted(async () => {
     socket.on('czar:cursor-update', handleCzarCursorUpdate)
 
 
+    if (shouldSkipName.value && !hasJoined.value) {
+        nameInput.value = `Player ${players.value.length + 1}`
+        await joinWithName()
+    }
 })
 
 onBeforeUnmount(() => {
@@ -312,9 +319,9 @@ watch(
             <div class="bg-noise"></div>
             <div class="bg-grid"></div>
 
-            <JoinScreen v-if="!hasJoined && !isLoading" :lobby-id="lobbyId" v-model:name-input="nameInput" :error-message="errorMessage" :players="players" @join="joinWithName" />
+            <JoinScreen v-if="!hasJoined && !isLoading && !shouldSkipName" :lobby-id="lobbyId" v-model:name-input="nameInput" :error-message="errorMessage" :players="players" @join="joinWithName" />
 
-            <GameRoomScreen v-else-if="hasJoined && !isLoading" />
+            <GameScreen v-else-if="hasJoined && !isLoading" />
         </div>
     </div>
 </template>

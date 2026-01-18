@@ -3,12 +3,12 @@ import { computed, ref, watch, nextTick } from 'vue'
 import gsap from 'gsap'
 import { useLobbyStore } from '@/store/LobbyStore'
 
-import LobbyScreen from '@/components/screens/gameroom/Lobby.vue'
-import IntroScreen from '@/components/screens/gameroom/Intro.vue'
-import BoardScreen from '@/components/screens/gameroom/Board.vue'
-import ResultsScreen from '@/components/screens/gameroom/Results.vue'
-import FinalResultsScreen from '@/components/screens/gameroom/FinalResults.vue'
-import DebugControls from '@/components/screens/gameroom/components/DebugControls.vue'
+import LobbyScreen from '@/components/screens/game/Lobby.vue'
+import IntroScreen from '@/components/screens/game/Intro.vue'
+import BoardScreen from '@/components/screens/game/Board.vue'
+import ResultsScreen from '@/components/screens/game/Results.vue'
+import FinalResultsScreen from '@/components/screens/game/FinalResults.vue'
+import DebugControls from '@/components/game/DebugControls.vue'
 
 const lobby = useLobbyStore()
 
@@ -28,8 +28,8 @@ let introAnimationTl: gsap.core.Timeline | null = null
 
 const shouldSkipIntro = computed(() => {
     const stage = (import.meta as any).env?.STAGE
-    const playIntro = (import.meta as any).env?.DEV_PLAY_INTRO
-    return stage === 'development' && String(playIntro) === '0'
+    const skipIntro = (import.meta as any).env?.DEV_SKIP_INTRO
+    return stage === 'development' && String(skipIntro) === '1'
 })
 
 
