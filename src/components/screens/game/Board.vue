@@ -35,7 +35,7 @@ const BlackCardRef = ref<HTMLElement | null>(null)
 const czarCursorComponentRef = ref<InstanceType<typeof CzarCursor> | null>(null)
 
 /* ---------- computed ---------- */
-const currentPlayerCards = computed(() => lobby.getCurrentPlayerCards())
+const currentPlayerCards = computed(() => lobby.getCurrentPlayerWhiteCards())
 const isCurrentPlayerCardSelector = computed(() => lobby.getCurrentPlayerIsCardSelector())
 const currentPlayer = computed(() => lobby.getCurrentPlayer())
 const isBoardPhase = computed(() => lobby.phase === "board")
@@ -308,7 +308,7 @@ function getCardFromEl(el: HTMLElement) {
     const cardId = el.dataset.cardId
     if (!pack || !cardId) return null
     return (
-        lobby.getCurrentPlayerCards().find((c) => c.pack === pack && String(c.card_id) === String(cardId)) ??
+        lobby.getCurrentPlayerWhiteCards().find((c) => c.pack === pack && String(c.card_id) === String(cardId)) ??
         null
     )
 }
@@ -785,7 +785,7 @@ defineExpose({ runIntroAnimation })
                                 <div class="text-xs font-black px-2 py-1 rounded-full bg-purple-200 text-purple-900 border-2 border-b-4 border-black">
                                     {{ player.points ?? 0 }} pts
                                 </div>
-                                <div v-if="lobby.isPlayerCardSelector(player.id)" class="text-xs font-bold px-2 py-1 rounded-full bg-yellow-300 text-black border-2 border-b-4 border-black">
+                                <div v-if="lobby.isPlayerCzar(player.id)" class="text-xs font-bold px-2 py-1 rounded-full bg-yellow-300 text-black border-2 border-b-4 border-black">
                                     Card Czar
                                 </div>
                             </div>

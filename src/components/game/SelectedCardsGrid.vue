@@ -26,7 +26,7 @@ const isCzarPhase = computed(() => lobby.phase === "czar")
 const isCzarResultPhase = computed(() => lobby.phase === "czar-result")
 const isRevealPhase = computed(() => isCzarPhase.value || isCzarResultPhase.value)
 const isBoardPhase = computed(() => lobby.phase === "board")
-const isCurrentPlayerCardSelector = computed(() => lobby.getCurrentPlayerIsCardSelector())
+const isCurrentPlayerCardSelector = computed(() => lobby.getCurrentPlayerIsCzar())
 const canCzarSelect = computed(() => isCzarPhase.value && isCurrentPlayerCardSelector.value)
 const selectedCzarCardPlayerId = computed(() => lobby.currentRound?.cardSelector?.selectedCard?.playerId ?? null)
 

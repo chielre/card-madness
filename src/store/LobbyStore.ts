@@ -4,9 +4,6 @@ import { resolveBlackCard, resolveWhiteCards } from "@/utils/cards"
 import router from '@/router'
 import { useUiStore } from './UiStore'
 
-const lockBoostLastAt = new Map<string, number>()
-
-
 type WhiteCard = {
     pack: string,
     card_id: number,
@@ -66,9 +63,6 @@ export const useLobbyStore = defineStore('lobby', {
         selectedPacks: [] as string[],
         host: '' as string,
         phase: 'lobby' as string,
-        config: {
-            lockBoostCooldownMs: 120,
-        },
         phaseTimeoutTick: 0,
         phaseTimerPhase: '',
         phaseTimerDurationMs: 0,
@@ -93,32 +87,88 @@ export const useLobbyStore = defineStore('lobby', {
         selectionLockBoostTick: 0,
         czarCursor: null as { playerId?: string; x: number; y: number; visible?: boolean } | null,
         czarCursorTick: 0,
+        config: {
+            lockBoostCooldownMs: 120,
+        },
+        lockBoostLastAt: new Map<string, number>()
+
     }),
 
     actions: {
-        getCurrentCardSelector(): Player | null {
-            const id = this.currentRound?.cardSelector?.player
+        getCurrentSocketId(): string | null {
+            return useConnectionStore().getSocketSafe()?.id ?? null
+        },
 
+        getCurrentPlayer(): Player | null {
+            const conn = useConnectionStore()
+            const socketId = conn.getSocketSafe()?.id
+            if (!socketId) return null
+
+            return this.getPlayer(socketId) ?? null
+        },
+
+        getCurrentPlayerOrFail(): Player | Error {
+            const player = this.getCurrentPlayer()
+            if (!player) throw new Error('Current player is not set')
+
+            return player
+        },
+
+
+        getCurrentPlayerWhiteCards(): WhiteCard[] {
+            const player = this.getCurrentPlayer();
+            if (!player) return []
+
+            return resolveWhiteCards(player.white_cards ?? [])
+        },
+        getCurrentPlayerIsHost(): boolean {
+            const socketId = this.getCurrentSocketId()
+            if (!socketId) return false
+
+            return socketId === this.host
+        },
+        getCurrentCzar(): Player | null {
+            const id = this.currentRound?.cardSelector?.player
             if (!id) return null
-            
+
             return this.players.find(p => p.id === id) ?? null
         },
-        addPlayer(player: Player) {
-            if (!this.players.find((p) => p.id === player.id)) {
-                this.players.push(normalizePlayer(player))
-            }
+        isPlayerCzar(playerId: string): boolean {
+            return playerId === this.currentRound?.cardSelector?.player
+        },
+        getCurrentPlayerIsCzar(): boolean {
+            const socketId = this.getCurrentSocketId()
+            if (!socketId) return false
+
+            return this.isPlayerCzar(socketId)
         },
 
+        addPlayer(player: Player) {
+            if (this.playerExists(player.id)) return;
+
+            this.players.push(normalizePlayer(player))
+        },
         removePlayer(id: string) {
+            if (!this.playerExists(id)) return;
+
             this.players = this.players.filter((p) => p.id !== id)
         },
-
         updatePlayer(id: string, data: Partial<{ name: string; ready: boolean; points: number }>) {
-            const player = this.players.find(p => p.id === id)
+            const player = this.getPlayer(id)
             if (!player) return
 
             Object.assign(player, data)
         },
+
+        getPlayer(id: string): Player | null {
+            return this.players.find(p => p.id === id) ?? null
+        },
+        playerExists(id: string): boolean {
+            return this.getPlayer(id) !== null
+        },
+
+
+
         setPhase(phase: string) {
             this.phase = phase
         },
@@ -168,25 +218,20 @@ export const useLobbyStore = defineStore('lobby', {
         },
 
         async joinLobby(code: string, name: string, language?: string) {
-
             const conn = useConnectionStore()
             const res = await conn.emitWithAck<Game>('room:join', { lobbyId: code, name, language })
             if (res.error) return res
 
             this.applyServerState(res)
-
-
             return res
         },
 
         async fetchState(lobbyId: string) {
             const conn = useConnectionStore()
             const res = await conn.emitWithAck<Game>('room:state', { lobbyId })
-
             if (res.error) return res
 
             this.applyServerState(res)
-
             return res
         },
 
@@ -248,43 +293,7 @@ export const useLobbyStore = defineStore('lobby', {
             return res
         },
 
-        getCurrentPlayer() {
-            const conn = useConnectionStore()
-            const socketId = conn.getSocketSafe()?.id
-            if (!socketId) return null
 
-            return this.players.find((p) => p.id === socketId) ?? null
-        },
-
-        getCurrentPlayerCards(): WhiteCard[] {
-            const player = this.getCurrentPlayer();
-            if (!player) return []
-
-            return resolveWhiteCards(player.white_cards ?? [])
-        },
-
-        getCurrentPlayerIsHost(): boolean {
-            const conn = useConnectionStore()
-            const socketId = conn.getSocketSafe()?.id
-            if (!socketId) return false
-
-            return socketId === this.host
-        },
-
-        getCurrentPlayerOrFail() {
-            if (!this.getCurrentPlayer()) {
-                throw new Error('Current player is not set')
-            }
-            return this.getCurrentPlayer()
-        },
-
-        getCurrentPlayerIsCardSelector(): boolean {
-            const conn = useConnectionStore()
-            const socketId = conn.getSocketSafe()?.id
-            if (!socketId) return false
-
-            return socketId === this.currentRound?.cardSelector?.player
-        },
 
         getCurrentBlackCardHtml(): string | null {
             const blackCard = this.currentRound?.blackCard
@@ -302,9 +311,7 @@ export const useLobbyStore = defineStore('lobby', {
             }
         },
 
-        isPlayerCardSelector(playerId: string): boolean {
-            return playerId === this.currentRound?.cardSelector?.player
-        },
+
 
         markPhaseTimeout() {
             this.phaseTimeoutTick += 1
@@ -328,6 +335,11 @@ export const useLobbyStore = defineStore('lobby', {
             }
         },
 
+        setRoundTimer(durationMs?: number, expiresAt?: number) {
+            this.roundTimerDurationMs = durationMs ?? 0
+            this.roundTimerExpiresAt = expiresAt ?? 0
+        },
+
         markRoundStarted() {
             this.roundStartedTick += 1
         },
@@ -336,10 +348,6 @@ export const useLobbyStore = defineStore('lobby', {
             this.roundTimeoutTick += 1
         },
 
-        setRoundTimer(durationMs?: number, expiresAt?: number) {
-            this.roundTimerDurationMs = durationMs ?? 0
-            this.roundTimerExpiresAt = expiresAt ?? 0
-        },
 
         setCurrentPlayerCards(cards: WhiteCard[]) {
             const player = this.getCurrentPlayer()
@@ -426,12 +434,12 @@ export const useLobbyStore = defineStore('lobby', {
         requestLockBoost(playerId: string) {
             if (!this.lobbyId) return
             if (this.phase !== 'board') return
-            if (this.getCurrentPlayerIsCardSelector()) return
+            if (this.getCurrentPlayerIsCzar()) return
 
             const now = Date.now()
-            const lastBoost = lockBoostLastAt.get(playerId) ?? 0
+            const lastBoost = this.lockBoostLastAt.get(playerId) ?? 0
             if (now - lastBoost < (this.config?.lockBoostCooldownMs ?? 0)) return
-            lockBoostLastAt.set(playerId, now)
+            this.lockBoostLastAt.set(playerId, now)
 
             const conn = useConnectionStore()
             const socket = conn.getSocketSafe()

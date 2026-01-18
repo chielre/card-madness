@@ -27,8 +27,6 @@ const hasJoined = computed(() =>
 
 
 
-const route = useRoute();
-const isDevRoute = computed(() => route.path.startsWith("/dev"));
 
 
 

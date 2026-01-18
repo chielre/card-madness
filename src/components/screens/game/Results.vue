@@ -603,7 +603,7 @@ watch(
           <span>czar</span>
           <div class="flex gap-2 bg-white border-3 text-lg border-purple-950 border-b-6 px-3 py-2 rounded-xl text-purple-950 font-black">
             <PersonIcon />
-            {{ lobby.getCurrentCardSelector()?.name ?? "A player" }}
+            {{ lobby.getCurrentCzar()?.name ?? "A player" }}
           </div>
           koos jou kaart!
         </template>
@@ -612,7 +612,7 @@ watch(
           <span>czar</span>
           <div class="flex gap-2 bg-white border-3 text-lg border-purple-950 border-b-6 px-3 py-2 rounded-xl text-purple-950 font-black">
             <PersonIcon />
-            {{ lobby.getCurrentCardSelector()?.name ?? "A player" }}
+            {{ lobby.getCurrentCzar()?.name ?? "A player" }}
           </div>
           koos de kaart van
           <div class="flex gap-2 bg-white border-3 text-lg border-purple-950 border-b-6 px-3 py-2 rounded-xl text-purple-950 font-black">
