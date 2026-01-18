@@ -52,7 +52,7 @@ const selectedCardHtml = computed(() => {
 })
 
 const canStartNextRound = computed(() =>
-  lobby.phase === "czar-result" && lobby.getCurrentPlayerIsCardSelector()
+  lobby.phase === "czar-result" && lobby.getCurrentPlayerIsCzar()
 )
 
 let blackCardContainerEl: HTMLElement | null = null

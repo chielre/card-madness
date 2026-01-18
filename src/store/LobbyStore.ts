@@ -151,6 +151,9 @@ export const useLobbyStore = defineStore('lobby', {
                 && !this.getCurrentPlayerIsCzar()
                 && !this.isCurrentPlayerWaitingForRound()
         },
+        canCurrentPlayerKickPlayer(playerId: string) {
+            return this.getCurrentPlayerIsHost() && playerId !== this.getCurrentPlayerId()
+        },
         isPlayerCzar(playerId: string): boolean {
             return playerId === this.currentRound?.cardSelector?.player
         },

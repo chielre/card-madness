@@ -52,7 +52,6 @@ const introPhaseAnimation = async () => {
             { autoAlpha: 0 },
             { autoAlpha: 1, duration: 0.8, ease: 'power2.out' },
             18)
-        .call(() => { BoardScreenRef.value?.runIntroAnimation() }, [], 18)
 
 
 

@@ -25,7 +25,6 @@ import BaseButton from "../../../components/ui/BaseButton.vue"
 
 const lobby = useLobbyStore()
 const audioStore = useAudioStore()
-const connection = useConnectionStore()
 const ui = useUiStore()
 
 
@@ -49,11 +48,8 @@ const isWaitingForRound = computed(() => lobby.isCurrentPlayerWaitingForRound())
 
 
 
-const canKickPlayer = (playerId: string) =>
-    lobby.getCurrentPlayerIsHost() && playerId !== connection.getSocketSafe()?.id
-
 const kickPlayer = async (playerId: string) => {
-    if (!canKickPlayer(playerId)) return
+    if (!lobby.canCurrentPlayerKickPlayer(playerId)) return
     await lobby.kickPlayer(lobby.lobbyId, playerId)
 }
 
@@ -107,7 +103,7 @@ const {
     handRef,
     playRef,
     boardGridRef,
-    currentPlayerId,
+    getCurrentPlayerId: () => currentPlayerId.value,
     cardLockWindowMs: CARD_LOCK_WINDOW_MS,
     lockBoostPulseMs: LOCK_BOOST_PULSE_MS,
 })
@@ -248,7 +244,7 @@ function onPointerDown(e: PointerEvent) {
     const el = (e.target as HTMLElement | null)?.closest?.(".draggable-card") as HTMLElement | null
     if (!el) return
     const currentId = currentPlayerId.value
-    
+
     if (currentId && playRef.value?.contains(el) && isUnselectBlocked(currentId)) return
     if (currentId && playRef.value?.contains(el)) {
         requestLockBoost(currentId)
@@ -765,7 +761,7 @@ onBeforeUnmount(() => {
                             </div>
 
                             <div class="flex items-center gap-3">
-                                <button v-if="canKickPlayer(player.id)" type="button" class="flex items-center justify-center w-7 h-7 hover:bg-gray-200 rounded-lg" @click.stop="kickPlayer(player.id)">
+                                <button v-if="lobby.canCurrentPlayerKickPlayer(player.id)" type="button" class="flex items-center justify-center w-7 h-7 hover:bg-gray-200 rounded-lg" @click.stop="kickPlayer(player.id)">
                                     <Close />
                                 </button>
                                 <div class="text-xs font-black px-2 py-1 rounded-full bg-purple-200 text-purple-900 border-2 border-b-4 border-black">
