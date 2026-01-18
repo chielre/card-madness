@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, ref, watch, nextTick, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
 
 
 import { useLobbyStore } from '@/store/LobbyStore'
@@ -21,14 +20,13 @@ import ToggleSwitch from "@/components/ui/ToggleSwitch.vue"
 import BaseButton from "@/components/ui/BaseButton.vue"
 import CardPack from '@/components/CardPack.vue'
 
-import ReadyListModal from '@/components/screens/game/ReadyListModal.vue'
-import PackInfoModal from '@/components/screens/game/PackInfoModal.vue'
+import ReadyListModal from '@/components/screens/gameroom/modals/ReadyListModal.vue'
+import PackInfoModal from '@/components/modals/PackInfoModal.vue'
 
 const lobby = useLobbyStore()
 const audio = useAudioStore()
 const ui = useUiStore()
 const connection = useConnectionStore()
-const router = useRouter()
 
 const readyModalRef = ref<InstanceType<typeof ReadyListModal> | null>(null)
 const packInfoModalRef = ref<InstanceType<typeof PackInfoModal> | null>(null)
@@ -37,13 +35,12 @@ const currentMusicPackId = ref<string | null>(null)
 const selectedPackIds = computed(() => lobby.selectedPacks)
 const resolvedPacks = computed(() => resolvePacks())
 
-type PackFilter = 'suggested' | 'nsfw'
+type PackFilter = 'nsfw'
 
-const activeFilters = ref<Set<PackFilter>>(new Set(['suggested', 'nsfw']))
+const activeFilters = ref<Set<PackFilter>>(new Set())
 
 const toggleAll = () => {
     activeFilters.value = new Set()
-
 }
 
 const toggleFilter = (f: PackFilter) => {
@@ -52,24 +49,17 @@ const toggleFilter = (f: PackFilter) => {
     activeFilters.value = next
 }
 
+const packPredicates: Record<PackFilter, (pack: any) => boolean> = {
+    nsfw: (pack) => !!pack.nsfw,
+}
+
 const filteredPacks = computed(() => {
-    const hasOfficial = activeFilters.value.has('suggested')
-    const hasNsfw = activeFilters.value.has('nsfw')
+    const filters = [...activeFilters.value]
+    if (filters.length === 0) return resolvedPacks.value
 
-    // All (beide aan) -> alles tonen
-    if (hasOfficial && hasNsfw) return resolvedPacks.value
-
-    // Geen filters aan -> ook alles tonen (fouttolerant)
-    if (!hasOfficial && !hasNsfw) return resolvedPacks.value
-
-    return resolvedPacks.value.filter(pack => {
-        const isOfficial = !!pack.author
-        const isNsfw = !!pack.nsfw
-
-        if (hasOfficial && isOfficial) return true
-        if (hasNsfw && isNsfw) return true
-        return false
-    })
+    return resolvedPacks.value.filter((pack) =>
+        filters.some((f) => packPredicates[f](pack))
+    )
 })
 
 const selectPack = (packId: string) => {
@@ -160,7 +150,7 @@ defineExpose({ openReadyModal, closeReadyModal })
             <div class="p-4 flex-1 flex items-center justify-end gap-4">
 
                 <BaseButton size="md" color="pink" @click="ui.openSettings" icon="Cog"></BaseButton>
-                <BaseButton size="md" color="pink" icon="Logout"></BaseButton>
+                <BaseButton size="md" color="pink" icon="Logout" @click="lobby.confirmLeaveLobby"></BaseButton>
             </div>
 
         </div>
@@ -204,10 +194,6 @@ defineExpose({ openReadyModal, closeReadyModal })
                     <div class="flex-1 flex gap-3 mb-4 bg-black/50 p-4 rounded-xl text-white">
                         <button class="font-bold cursor-pointer" @click="toggleAll">
                             All
-                        </button>
-
-                        <button class="font-bold cursor-pointer" :class="activeFilters.has('suggested') ? ' underline text-outline-black' : ''" @click="toggleFilter('suggested')">
-                            Suggested
                         </button>
 
                         <button class="font-bold cursor-pointer" :class="activeFilters.has('nsfw') ? ' underline text-outline-black' : ''" @click="toggleFilter('nsfw')">

@@ -5,6 +5,7 @@ import { scheduleRoundTimer } from '../utils/roundTimers.js'
 import { clearSelectionLockTimers, getSelectionLockDelayMs, hasActiveSelectionLocks } from '../utils/selectionLockTimers.js'
 
 import { PHASE_DEFAULT_DURATIONS } from '../config/phaseDurations.js'
+import { emitPlayersUpdated } from '../io/emitters.js'
 
 const shouldSkipIntro = () =>
     process.env.STAGE === 'development' && String(process.env.DEV_PLAY_INTRO) === '0'
@@ -84,7 +85,12 @@ export const handleGameFlow = ({ io, socket, games, lobbyId, game }) => {
 }
 
 export const startResultsPhase = ({ io, games, lobbyId }) => {
-    return transitionPhase({ games, io, lobbyId, to: 'results' })
+    const res = transitionPhase({ games, io, lobbyId, to: 'results' })
+    const updatedGame = games.get(lobbyId)
+    if (updatedGame) {
+        emitPlayersUpdated({ io, lobbyId, game: updatedGame })
+    }
+    return res
 }
 
 export const startRoundFlow = ({ io, games, lobbyId, round, durationMs = 90000 }) => {
@@ -136,6 +142,7 @@ export const startRoundFlow = ({ io, games, lobbyId, round, durationMs = 90000 }
         durationMs,
         expiresAt,
     })
+    emitPlayersUpdated({ io, lobbyId, game: freshGame })
 
     return { game: freshGame, round: startedRound }
 }

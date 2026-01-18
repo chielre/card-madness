@@ -5,6 +5,7 @@ import { trackJoin, trackLeave } from '../services/socketRoomService.js'
 import { clearPhaseTimer, schedulePhaseTimer } from '../utils/phaseTimers.js'
 import { clearRoundTimer } from '../utils/roundTimers.js'
 import { PHASE_DEFAULT_DURATIONS } from '../config/phaseDurations.js'
+import { LOCK_BOOST_COOLDOWN_MS } from '../config/player.js'
 import { phaseTimers, roundTimers, selectionLockTimers } from '../state/store.js'
 import { emitPlayersUpdated } from './emitters.js'
 
@@ -50,7 +51,7 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
         socket.join(lobbyId)
         trackJoin(socketRooms, socket.id, lobbyId)
 
-        socket.to(lobbyId).emit('room:player-joined', { id: socket.id, name, ready: false, language })
+        socket.to(lobbyId).emit('room:player-joined', { id: socket.id, name, ready: false, language, points: 0 })
         const currentRoundNumber = Number(game.currentRound) || 0
         const currentRound = currentRoundNumber ? game.rounds?.[currentRoundNumber] ?? null : null
         const phaseTimer = phaseTimers.get(lobbyId)
@@ -61,6 +62,9 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
             host: game.host,
             players: game.players,
             selectedPacks: game.selectedPacks ?? [],
+            config: {
+                lockBoostCooldownMs: LOCK_BOOST_COOLDOWN_MS,
+            },
             currentRound,
             currentRoundNumber,
             phaseTimerPhase: phaseTimer?.phase ?? '',
@@ -145,6 +149,9 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
             host: game.host,
             players: game.players,
             selectedPacks: game.selectedPacks ?? [],
+            config: {
+                lockBoostCooldownMs: LOCK_BOOST_COOLDOWN_MS,
+            },
             currentRound,
             currentRoundNumber,
             phaseTimerPhase: phaseTimer?.phase ?? '',
@@ -174,13 +181,31 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
             const res = startRoundFlow({ io, games, lobbyId, round: nextRound, durationMs })
             if (res && 'error' in res) return cb?.(res)
             const updated = games.get(lobbyId)
-            return cb?.({ lobbyId: lobbyId, phase: updated?.phase ?? game.phase, host: updated?.host ?? game.host, players: updated?.players ?? game.players, selectedPacks: updated?.selectedPacks ?? game.selectedPacks ?? [] })
+            return cb?.({
+                lobbyId: lobbyId,
+                phase: updated?.phase ?? game.phase,
+                host: updated?.host ?? game.host,
+                players: updated?.players ?? game.players,
+                selectedPacks: updated?.selectedPacks ?? game.selectedPacks ?? [],
+                config: {
+                    lockBoostCooldownMs: LOCK_BOOST_COOLDOWN_MS,
+                },
+            })
         }
 
         if (phase === 'czar') {
             startCzarPhase({ io, games, lobbyId, round: game.currentRound, durationMs })
             const updated = games.get(lobbyId)
-            return cb?.({ lobbyId: lobbyId, phase: updated?.phase ?? game.phase, host: updated?.host ?? game.host, players: updated?.players ?? game.players, selectedPacks: updated?.selectedPacks ?? game.selectedPacks ?? [] })
+            return cb?.({
+                lobbyId: lobbyId,
+                phase: updated?.phase ?? game.phase,
+                host: updated?.host ?? game.host,
+                players: updated?.players ?? game.players,
+                selectedPacks: updated?.selectedPacks ?? game.selectedPacks ?? [],
+                config: {
+                    lockBoostCooldownMs: LOCK_BOOST_COOLDOWN_MS,
+                },
+            })
         }
 
         const res = transitionPhase({ games, io, lobbyId, to: phase })
@@ -201,7 +226,16 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
             io.to(lobbyId).emit('room:phase-timer', { phase: res.game.phase, ...phaseTimer })
         }
 
-        cb?.({ lobbyId: lobbyId, phase: game.phase, host: game.host, players: game.players, selectedPacks: game.selectedPacks ?? [] })
+        cb?.({
+            lobbyId: lobbyId,
+            phase: game.phase,
+            host: game.host,
+            players: game.players,
+            selectedPacks: game.selectedPacks ?? [],
+            config: {
+                lockBoostCooldownMs: LOCK_BOOST_COOLDOWN_MS,
+            },
+        })
 
     })
 

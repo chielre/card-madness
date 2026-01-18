@@ -40,6 +40,7 @@ export type ResolvedPack = Pack & {
     musicUrl: string
     backgroundColors: string[]
     deprecated: boolean
+    deprecatedNote: string
 }
 
 type GlobMap = Record<string, string>
@@ -69,10 +70,11 @@ const musicFiles = import.meta.glob("/packs/*/music.mp3", {
     import: "default",
 }) as GlobMap
 
-const deprecatedFiles = import.meta.glob("/packs/*/DEPRECATED.md", {
+const deprecatedFiles = import.meta.glob("/packs/*/DEPRECATED.*", {
     eager: true,
     import: "default",
-}) as GlobMap
+    query: "?raw",
+}) as Record<string, string>
 
 const DEFAULT_GRADIENT_FROM = "#111827"
 const DEFAULT_GRADIENT_TO = "#4b5563"
@@ -102,6 +104,12 @@ function normalizeBackgroundColors(meta: PackMeta): string[] {
     return [fallbackFrom, fallbackTo]
 }
 
+function clampDeprecatedNote(raw: string, maxWords = 500) {
+    const words = raw.trim().split(/\s+/).filter(Boolean)
+    if (words.length <= maxWords) return words.join(" ")
+    return `${words.slice(0, maxWords).join(" ")}...`
+}
+
 function getResolved(): ResolvedPack[] {
     if (!_cache) _cache = resolvePacks()
     return _cache
@@ -124,7 +132,9 @@ export function resolvePacks(): ResolvedPack[] {
     const logoMap = mapAssetsByPack(logoImages)
     const partnerMap = mapAssetsByPack(partnerImages)
     const musicMap = mapAssetsByPack(musicFiles)
-    const deprecatedMap = mapAssetsByPack(deprecatedFiles)
+    const deprecatedMap = Object.fromEntries(
+        Object.entries(deprecatedFiles).map(([path, raw]) => [packIdFromPath(path), raw])
+    ) as Record<string, string>
 
     return Object.entries(packJsons).map(([path, meta]) => {
         const packId = packIdFromPath(path)
@@ -146,6 +156,9 @@ export function resolvePacks(): ResolvedPack[] {
             musicUrl: musicMap[packId] ?? "",
             backgroundColors,
             deprecated: Boolean(deprecatedMap[packId]),
+            deprecatedNote: deprecatedMap[packId]
+                ? clampDeprecatedNote(deprecatedMap[packId])
+                : "",
         }
     })
 }

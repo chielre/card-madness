@@ -7,8 +7,8 @@ import { useAudioStore } from '@/store/AudioStore'
 import { useUiStore } from '@/store/UiStore'
 
 // Screens (optioneel te gebruiken)
-import JoinScreen from '@/components/screens/game/Join.vue'
-import GameRoomScreen from '@/components/screens/game/GameRoom.vue'
+import JoinScreen from '@/components/screens/Join.vue'
+import GameRoomScreen from '@/components/screens/GameRoom.vue'
 
 
 const route = useRoute()
@@ -36,7 +36,8 @@ const hasJoined = computed(() => {
     return !!players.value.find((p) => p.id === socket?.id)
 })
 
-const normalizePlayers = (playerList: { id: string; name: string; ready?: boolean }[]) => playerList.map((p) => ({ ...p, ready: !!p.ready }))
+const normalizePlayers = (playerList: { id: string; name: string; ready?: boolean; points?: number }[]) =>
+    playerList.map((p) => ({ ...p, ready: !!p.ready, points: Number(p.points) || 0 }))
 
 const roomNotFound = () => {
     return router.replace({
@@ -126,7 +127,7 @@ const handlePlayerReady = (payload: { id: string; ready: boolean }) => {
 
 
 }
-const handlePlayerJoined = (payload: { id: string; name: string; ready?: boolean }) => {
+const handlePlayerJoined = (payload: { id: string; name: string; ready?: boolean; points?: number }) => {
     lobby.addPlayer(payload)
 
 }

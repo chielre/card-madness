@@ -32,14 +32,14 @@ const openInfo = () => {
         <div class="pack-background absolute top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%] w-[150%] h-[150%] bg-center bg-repeat opacity-60 pointer-events-none -rotate-12" :style="{ backgroundImage: `url(${pack.bgUrl})`, backgroundSize: '100px' }"></div>
         <div class="relative text-white font-bold flex flex-col h-full items-center justify-between w-full ">
 
+            <div v-if="pack.deprecated" class="group-hover:scale-0  transition duration-250 absolute bottom-0 left-0 text-xs right-0 z-10 bg-red-600 border-2 border-b-4 shadow-lg py-1 px-3 rotate-6 border-red-700 text-center rounded-xl">
+                Leaving Soon
+            </div>
 
             <div class="relative  group-hover:scale-110 transition duration-250">
                 <img width="180" :src="pack.logoUrl">
-                <img v-if="pack.nsfw" width="60" src="../assets/images/pack_nsfw.png" class=" absolute bottom-2 left-3 rotate-12" alt="">
+                <img v-if="pack.nsfw" width="50" src="../assets/images/pack_nsfw.png" class=" absolute bottom-2 left-3 rotate-12" alt="">
             </div>
-
-
-
 
             <div class="group-hover:translate-y-24 group-hover:scale-0 transition duration-250">
                 <div v-if="pack.partnerUrl" class="flex gap-2">

@@ -1,6 +1,10 @@
 import { defineStore } from 'pinia'
 import { useConnectionStore } from './ConnectionStore'
 import { resolveBlackCard, resolveWhiteCards } from "@/utils/cards"
+import router from '@/router'
+import { useUiStore } from './UiStore'
+
+const lockBoostLastAt = new Map<string, number>()
 
 
 type WhiteCard = {
@@ -18,6 +22,7 @@ type Player = {
     white_cards: WhiteCard[],
     ready?: boolean
     eligibleFromRound?: number
+    points?: number
 }
 
 type RoundState = {
@@ -35,6 +40,9 @@ type Game = {
     players: Player[],
     phase: string,
     selectedPacks: [],
+    config?: {
+        lockBoostCooldownMs?: number,
+    },
     currentRound?: RoundState | null,
     currentRoundNumber?: number,
     phaseTimerPhase?: string,
@@ -48,6 +56,7 @@ type Game = {
 const normalizePlayer = (player: Player) => ({
     ...player,
     ready: !!player.ready,
+    points: Number(player.points) || 0,
 })
 
 export const useLobbyStore = defineStore('lobby', {
@@ -57,6 +66,9 @@ export const useLobbyStore = defineStore('lobby', {
         selectedPacks: [] as string[],
         host: '' as string,
         phase: 'lobby' as string,
+        config: {
+            lockBoostCooldownMs: 120,
+        },
         phaseTimeoutTick: 0,
         phaseTimerPhase: '',
         phaseTimerDurationMs: 0,
@@ -101,13 +113,12 @@ export const useLobbyStore = defineStore('lobby', {
             this.players = this.players.filter((p) => p.id !== id)
         },
 
-        updatePlayer(id: string, data: Partial<{ name: string; ready: boolean }>) {
+        updatePlayer(id: string, data: Partial<{ name: string; ready: boolean; points: number }>) {
             const player = this.players.find(p => p.id === id)
             if (!player) return
 
             Object.assign(player, data)
         },
-
         setPhase(phase: string) {
             this.phase = phase
         },
@@ -129,6 +140,9 @@ export const useLobbyStore = defineStore('lobby', {
             this.selectedPacks = res.selectedPacks ?? []
             this.host = res.host ?? ''
             this.phase = res.phase ?? this.phase
+            if (res.config?.lockBoostCooldownMs != null) {
+                this.config.lockBoostCooldownMs = res.config.lockBoostCooldownMs
+            }
 
             if (typeof res.currentRoundNumber === 'number') {
                 this.currentRoundNumber = res.currentRoundNumber
@@ -185,6 +199,24 @@ export const useLobbyStore = defineStore('lobby', {
                 this.players = this.players.filter((p) => p.id !== conn.getSocketSafe()?.id)
             }
             return res
+        },
+        async confirmLeaveLobby() {
+            const ui = useUiStore()
+            const confirmed = await ui.confirmActionAsync({
+                title: 'Lobby verlaten?',
+                message: 'Weet je zeker dat je de lobby wilt verlaten?',
+                confirmText: 'Verlaten',
+                cancelText: 'Blijven',
+                destructive: true,
+            })
+
+            if (!confirmed) return false
+
+            if (this.lobbyId) {
+                await this.leaveLobby(this.lobbyId)
+            }
+            router.replace({ name: 'main' })
+            return true
         },
 
         async kickPlayer(lobbyId: string, playerId: string) {
@@ -390,6 +422,21 @@ export const useLobbyStore = defineStore('lobby', {
         recordCzarCursor(payload: { playerId?: string; x: number; y: number; visible?: boolean }) {
             this.czarCursor = payload
             this.czarCursorTick += 1
+        },
+        requestLockBoost(playerId: string) {
+            if (!this.lobbyId) return
+            if (this.phase !== 'board') return
+            if (this.getCurrentPlayerIsCardSelector()) return
+
+            const now = Date.now()
+            const lastBoost = lockBoostLastAt.get(playerId) ?? 0
+            if (now - lastBoost < (this.config?.lockBoostCooldownMs ?? 0)) return
+            lockBoostLastAt.set(playerId, now)
+
+            const conn = useConnectionStore()
+            const socket = conn.getSocketSafe()
+            if (!socket) return
+            socket.emit("player:card-lock-boost", { lobbyId: this.lobbyId, playerId })
         },
 
     },

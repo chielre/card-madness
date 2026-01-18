@@ -1,21 +1,27 @@
 <script setup lang="ts">
-import { computed, ref, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 import gsap from 'gsap'
 import { useLobbyStore } from '@/store/LobbyStore'
 
-import LobbyScreen from '@/components/screens/game/Lobby.vue'
-import IntroScreen from '@/components/screens/game/Intro.vue'
-import BoardScreen from '@/components/screens/game/Board.vue'
+import LobbyScreen from '@/components/screens/gameroom/Lobby.vue'
+import IntroScreen from '@/components/screens/gameroom/Intro.vue'
+import BoardScreen from '@/components/screens/gameroom/Board.vue'
+import ResultsScreen from '@/components/screens/gameroom/Results.vue'
+import FinalResultsScreen from '@/components/screens/gameroom/FinalResults.vue'
+import DebugControls from '@/components/screens/gameroom/components/DebugControls.vue'
 
 const lobby = useLobbyStore()
 
 const showLobbyScreen = computed(() => ['lobby', 'starting'].includes(lobby.phase) || (lobby.phase === 'intro' && !shouldSkipIntro.value))
 const showIntroScreen = computed(() => lobby.phase === 'intro' && !shouldSkipIntro.value)
-const showBoardScreen = computed(() => ['intro', 'board', 'czar', 'czar-result'].includes(lobby.phase))
+const showBoardScreen = computed(() => ['intro', 'board', 'czar'].includes(lobby.phase))
+const showCzarResultsScreen = computed(() => lobby.phase === 'czar-result')
+const showResultsScreen = computed(() => lobby.phase === 'results')
 
 const LobbyScreenRef = ref<InstanceType<typeof LobbyScreen> | null>(null)
 const IntroScreenRef = ref<InstanceType<typeof IntroScreen> | null>(null)
 const BoardScreenRef = ref<InstanceType<typeof BoardScreen> | null>(null)
+const ResultsScreenRef = ref<InstanceType<typeof ResultsScreen> | null>(null)
 
 
 let introAnimationTl: gsap.core.Timeline | null = null
@@ -69,16 +75,42 @@ watch(
     }
 )
 
-onMounted(() => {
-})
+watch(
+    () => lobby.phase,
+    (phase, prev) => {
+        if (phase === prev) return
 
-</script>s
+        if (phase === 'czar-result') {
+            nextTick(() => {
+                ResultsScreenRef.value?.startCzarResultAnimation()
+            })
+            return
+        }
+
+        if (prev === 'czar-result' && phase === 'board') {
+            nextTick(() => {
+                ResultsScreenRef.value?.startCzarResultOutroAnimation()
+            })
+            return
+        }
+
+        if (prev === 'czar-result') {
+            ResultsScreenRef.value?.resetCzarResultAnimation()
+        }
+    },
+    { flush: 'post' }
+)
+
+</script>
 
 <template>
     <div>
         <LobbyScreen v-show="showLobbyScreen" ref="LobbyScreenRef" />
         <IntroScreen v-show="showIntroScreen" ref="IntroScreenRef" />
         <BoardScreen v-show="showBoardScreen" ref="BoardScreenRef" />
+        <ResultsScreen v-show="showCzarResultsScreen" ref="ResultsScreenRef" />
+        <FinalResultsScreen v-show="showResultsScreen" />
+        <DebugControls />
     </div>
 
 </template>

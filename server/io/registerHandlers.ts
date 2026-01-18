@@ -2,6 +2,7 @@ import { registerRoomHandlers } from './room.handlers.js'
 import { registerPlayerHandlers } from './player.handlers.js'
 import { registerPacksHandlers } from './packs.handlers.js'
 import { registerRoundsHandlers } from './round.handlers.js'
+import { registerDevHandlers } from './dev.handlers.js'
 import { leaveGame } from '../services/gameService.js'
 import { trackLeave } from '../services/socketRoomService.js'
 import { clearPhaseTimer } from '../utils/phaseTimers.js'
@@ -12,6 +13,7 @@ export const registerHandlers = ({ io, socket, games, socketRooms }) => {
     registerPlayerHandlers({ io, socket, games })
     registerPacksHandlers({ socket, games })
     registerRoundsHandlers({ io, socket, games, socketRooms })
+    registerDevHandlers({ io, socket, games })
 
     socket.on('disconnect', () => {
         const rooms = socketRooms.get(socket.id)

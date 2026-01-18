@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { watch } from 'vue'
 
 export const useUiStore = defineStore('ui', {
   state: () => ({
@@ -36,6 +37,25 @@ export const useUiStore = defineStore('ui', {
       this.confirmIsDestructive = payload?.destructive ?? false
       this.isConfirmOpen = true
       return this.confirmId
+    },
+    confirmActionAsync(payload?: {
+      title?: string
+      message?: string
+      confirmText?: string
+      cancelText?: string
+      destructive?: boolean
+    }) {
+      const confirmId = this.confirmAction(payload)
+      return new Promise<boolean>((resolve) => {
+        const stop = watch(
+          () => this.confirmResultId,
+          (resultId) => {
+            if (resultId !== confirmId) return
+            stop()
+            resolve(!!this.confirmResult)
+          }
+        )
+      })
     },
     resolveConfirm(result: boolean) {
       this.isConfirmOpen = false

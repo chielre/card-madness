@@ -43,11 +43,18 @@ defineExpose({ open, close })
             </button>
             <div class="text-xs font-black uppercase tracking-wide text-gray-600">Pack info</div>
             <div class="flex gap-4 items-center">
-
                 <h3 class="text-2xl font-black">{{ selectedPack.name }}</h3>
                 <div class=" font-bold border-2 border-b-4 rounded-full px-2 py-0.5 text-xs" v-if="selectedPack.nsfw">NSFW</div>
             </div>
+
+            <div v-if="selectedPack.deprecated" class="bg-red-100 border-red-500 border rounded-lg p-3 mt-6 text-sm">
+                <h3 class="text-red-900 font-bold">This pack is leaving soon</h3>
+                <p class="text-xs text-red-900"> {{ selectedPack.deprecatedNote ?? 'No reason given' }}</p>
+            </div>
+
+
             <p class="mt-6 text-lg leading-relaxed">{{ selectedPack.description }}</p>
+
             <div class="mt-6 justify-between flex items-center bg-gray-50 rounded-xl p-3">
                 <div class=" flex items-center gap-4">
                     <img v-if="selectedPack.logoUrl" :src="selectedPack.logoUrl" class="w-20 h-20 object-contain" alt="">
