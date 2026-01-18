@@ -1,18 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue"
+import type { PropType } from "vue"
 import gsap from "gsap"
 import { useLobbyStore } from "@/store/LobbyStore"
+import type { SelectedCardEntry } from "@/store/LobbyStore"
 
-type SelectedEntry = {
-  playerId: string
-  card?: any
-  resolved?: { text?: string }
-}
-
-const props = defineProps<{
-  entries: SelectedEntry[]
-  isCardLocked: (playerId: string) => boolean
-}>()
+const props = defineProps({
+  isCardLocked: { type: Function as PropType<(playerId: string) => boolean>, required: true },
+  playRef: { type: Object as PropType<HTMLElement | null>, default: null },
+  boardGridRef: { type: Object as PropType<HTMLElement | null>, default: null },
+})
 
 const emit = defineEmits<{
   (event: "reveal-ready", ready: boolean): void
@@ -25,10 +22,12 @@ const gridRef = ref<HTMLElement | null>(null)
 const isCzarPhase = computed(() => lobby.phase === "czar")
 const isCzarResultPhase = computed(() => lobby.phase === "czar-result")
 const isRevealPhase = computed(() => isCzarPhase.value || isCzarResultPhase.value)
-const isBoardPhase = computed(() => lobby.phase === "board")
 const isCurrentPlayerCardSelector = computed(() => lobby.getCurrentPlayerIsCzar())
 const canCzarSelect = computed(() => isCzarPhase.value && isCurrentPlayerCardSelector.value)
 const selectedCzarCardPlayerId = computed(() => lobby.currentRound?.cardSelector?.selectedCard?.playerId ?? null)
+const currentPlayerId = computed(() => lobby.getCurrentPlayer()?.id ?? null)
+
+const selectedEntries = computed<SelectedCardEntry[]>(() => lobby.getSelectedEntriesForBoard())
 
 const CZAR_FLIP_DELAY_MS = 350
 let czarFlipTimeout: ReturnType<typeof setTimeout> | null = null
@@ -43,13 +42,12 @@ function setCzarRevealReady(value: boolean) {
   emit("reveal-ready", value)
 }
 
-function onCzarCardSelect(entry: SelectedEntry) {
+function onCzarCardSelect(entry: SelectedCardEntry) {
   if (!canCzarSelect.value) return
   lobby.queueCzarSelectedEntry(entry as { playerId: string; card: any })
 }
 
 function requestLockBoost(playerId: string) {
-  if (!isBoardPhase.value) return
   if (props.isCardLocked(playerId)) return
   lobby.requestLockBoost(playerId)
 }
@@ -183,6 +181,113 @@ function playCzarShuffle() {
   return tl
 }
 
+function getGridContainer() {
+  if (props.boardGridRef) return props.boardGridRef
+  return (gridRef.value?.parentElement ?? gridRef.value) as HTMLElement | null
+}
+
+function getPlayDropPosition() {
+  const gridEl = getGridContainer()
+  const playEl = props.playRef
+  if (!gridEl || !playEl) return null
+
+  const gridRect = gridEl.getBoundingClientRect()
+  const playRect = playEl.getBoundingClientRect()
+
+  const x = playRect.left - gridRect.left + playRect.width + 24
+  const y = playRect.top - gridRect.top + playRect.height / 2 - 120
+  return { x, y, gridEl }
+}
+
+function spawnSelectedCardAnim(cardText: string, action: "selected" | "unselected", playerId?: string) {
+  const gridEl = getGridContainer()
+  if (!gridEl) return
+  const currentId = currentPlayerId.value
+  if (action === "unselected" && playerId && currentId && playerId === currentId) return
+
+  if (action === "selected" && playerId) {
+    const target = gridEl.querySelector(`[data-selected-player-id="${playerId}"]`) as HTMLElement | null
+    if (!target) return
+
+    gsap.fromTo(
+      target,
+      { y: -220, rotateZ: gsap.utils.random(-12, 12), rotateX: 55, opacity: 0 },
+      { y: 0, rotateZ: gsap.utils.random(-6, 6), rotateX: 0, opacity: 1, duration: 0.8, ease: "power2.out" }
+    )
+    return
+  }
+
+  if (action === "unselected" && playerId) {
+    const target = gridEl.querySelector(`[data-selected-player-id="${playerId}"]`) as HTMLElement | null
+    if (target) {
+      const rect = target.getBoundingClientRect()
+      const clone = target.cloneNode(true) as HTMLElement
+      Object.assign(clone.style, {
+        position: "fixed",
+        left: `${rect.left}px`,
+        top: `${rect.top}px`,
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+        margin: "0",
+        pointerEvents: "none",
+        transformOrigin: "center",
+      })
+      document.body.appendChild(clone)
+      gsap.fromTo(
+        clone,
+        { y: 0, rotateZ: gsap.utils.random(-6, 6), rotateX: 0, opacity: 1 },
+        {
+          y: -220,
+          rotateZ: gsap.utils.random(-12, 12),
+          rotateX: 55,
+          opacity: 0,
+          duration: 0.8,
+          ease: "power2.out",
+          onComplete: () => clone.remove(),
+        }
+      )
+      return
+    }
+  }
+
+  const pos = getPlayDropPosition()
+  if (!pos) return
+  const el = document.createElement("div")
+  el.className = "madness-card card-back"
+  el.innerHTML = cardText || "..."
+  el.style.position = "absolute"
+  el.style.left = `${pos.x}px`
+  el.style.top = `${pos.y}px`
+  el.style.pointerEvents = "none"
+  el.style.transformStyle = "preserve-3d"
+  pos.gridEl.appendChild(el)
+
+  gsap.fromTo(
+    el,
+    { y: 0, rotateZ: gsap.utils.random(-6, 6), rotateX: 0, opacity: 1 },
+    {
+      y: -220,
+      rotateZ: gsap.utils.random(-12, 12),
+      rotateX: 55,
+      opacity: 0,
+      duration: 0.8,
+      ease: "power2.out",
+      onComplete: () => el.remove(),
+    }
+  )
+}
+
+function handleSelectedCardAnim(tick: number) {
+  if (!tick) return
+  const cardText = lobby.lastSelectedCard?.card?.text ?? ""
+  const action = (lobby.lastSelectedCard?.action ?? "selected") as "selected" | "unselected"
+  const playerId = lobby.lastSelectedCard?.playerId
+  const isSync = !!lobby.lastSelectedCard?.sync
+  if (isSync) return
+  if (action === "selected") nextTick(() => spawnSelectedCardAnim(cardText, action, playerId))
+  else spawnSelectedCardAnim(cardText, action, playerId)
+}
+
 function scheduleCzarRevealRetry() {
   if (czarRevealRetryTimeout) return
   czarRevealRetryTimeout = setTimeout(() => {
@@ -216,7 +321,12 @@ function tryStartCzarReveal() {
 }
 
 watch(
-  () => props.entries.length,
+  () => lobby.selectedCardAnimTick,
+  handleSelectedCardAnim
+)
+
+watch(
+  () => selectedEntries.value.length,
   () => {
     if (!isCzarPhase.value) return
     nextTick(() => tryStartCzarReveal())
@@ -259,7 +369,7 @@ onBeforeUnmount(() => {
 <template>
   <div ref="gridRef" class="contents">
     <div
-      v-for="entry in props.entries"
+      v-for="entry in selectedEntries"
       :key="entry.playerId"
       class="card-flip card-responsive"
       :class="{

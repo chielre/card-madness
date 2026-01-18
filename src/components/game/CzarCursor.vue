@@ -1,17 +1,15 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from "vue"
-import type { PropType, Ref } from "vue"
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue"
+import type { PropType } from "vue"
 import gsap from "gsap"
 
 import { useConnectionStore } from "@/store/ConnectionStore"
 import { useLobbyStore } from "@/store/LobbyStore"
 
 const props = defineProps({
-  boardAreaRef: { type: Object as PropType<Ref<HTMLElement | null> | null>, default: null },
-  boardGridRef: { type: Object as PropType<Ref<HTMLElement | null> | null>, default: null },
-  blackCardRef: { type: Object as PropType<Ref<HTMLElement | null> | null>, default: null },
-  isCzarPhase: { type: Boolean, required: true },
-  isCurrentPlayerCardSelector: { type: Boolean, required: true },
+  boardAreaRef: { type: Object as PropType<HTMLElement | null>, default: null },
+  boardGridRef: { type: Object as PropType<HTMLElement | null>, default: null },
+  blackCardRef: { type: Object as PropType<HTMLElement | null>, default: null },
   czarRevealReady: { type: Boolean, required: true },
 })
 
@@ -25,6 +23,8 @@ const connection = useConnectionStore()
 const cursorRef = ref<HTMLElement | null>(null)
 const cursorVisible = ref(false)
 const lastCzarCursor = ref<{ x: number; y: number } | null>(null)
+const isCzarPhase = computed(() => lobby.phase === "czar")
+const isCurrentPlayerCardSelector = computed(() => lobby.getCurrentPlayerIsCzar())
 let czarCursorRaf = 0
 let czarCursorPending: { x: number; y: number } | null = null
 let czarHoverCard: HTMLElement | null = null
@@ -38,14 +38,32 @@ const CZAR_CURSOR_MARGIN_PX = 120
 const CZAR_CURSOR_HIDE_DELAY_MS = 140
 const CZAR_HOVER_PAD_PX = 60
 
+type CursorRect = { left: number; top: number; width: number; height: number }
+
 function clamp01(value: number) {
   return Math.min(1, Math.max(0, value))
 }
 
-function getCursorAreaRect() {
-  const area = props.boardAreaRef.value
-  if (area) return area.getBoundingClientRect()
-  return { left: 0, top: 0, width: window.innerWidth || 1, height: window.innerHeight || 1 }
+function getAreaRect(el: HTMLElement | null): CursorRect | null {
+  if (!el) return null
+  const rect = el.getBoundingClientRect()
+  if (!rect.width || !rect.height) return null
+  return { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
+}
+
+function mergeRects(a: CursorRect, b: CursorRect): CursorRect {
+  const left = Math.min(a.left, b.left)
+  const top = Math.min(a.top, b.top)
+  const right = Math.max(a.left + a.width, b.left + b.width)
+  const bottom = Math.max(a.top + a.height, b.top + b.height)
+  return { left, top, width: right - left, height: bottom - top }
+}
+
+function getCursorAreaRect(): CursorRect | null {
+  const areaRect = getAreaRect(props.boardAreaRef)
+  const gridRect = getAreaRect(props.boardGridRef)
+  if (areaRect && gridRect) return mergeRects(areaRect, gridRect)
+  return areaRect ?? gridRect
 }
 
 function refreshCzarCursorHotspot() {
@@ -65,8 +83,8 @@ function refreshCzarCursorHotspot() {
   czarCursorHotspot = { x: anchorX - pointerTipX, y: anchorY - pointerTipY }
 }
 
-function isCursorInBounds(x: number, y: number) {
-  const rect = getCursorAreaRect()
+function isCursorInBounds(x: number, y: number, rect: CursorRect | null = getCursorAreaRect()) {
+  if (!rect) return false
   return (
     x >= rect.left - CZAR_CURSOR_MARGIN_PX
     && x <= rect.left + rect.width + CZAR_CURSOR_MARGIN_PX
@@ -75,15 +93,15 @@ function isCursorInBounds(x: number, y: number) {
   )
 }
 
-function normalizeCursor(x: number, y: number) {
-  const rect = getCursorAreaRect()
+function normalizeCursor(x: number, y: number, rect: CursorRect | null = getCursorAreaRect()) {
+  if (!rect) return null
   const nx = (x - rect.left) / rect.width
   const ny = (y - rect.top) / rect.height
   return { x: clamp01(nx), y: clamp01(ny) }
 }
 
-function denormalizeCursor(pos: { x: number; y: number }) {
-  const rect = getCursorAreaRect()
+function denormalizeCursor(pos: { x: number; y: number }, rect: CursorRect | null = getCursorAreaRect()) {
+  if (!rect) return null
   return {
     x: Math.round(rect.left + pos.x * rect.width),
     y: Math.round(rect.top + pos.y * rect.height),
@@ -104,8 +122,8 @@ function clearCzarHover() {
 }
 
 function getCzarHoverCardAt(x: number, y: number) {
-  if (!props.boardGridRef.value) return null
-  const cards = Array.from(props.boardGridRef.value.querySelectorAll(".card-flip")) as HTMLElement[]
+  if (!props.boardGridRef) return null
+  const cards = Array.from(props.boardGridRef.querySelectorAll(".card-flip")) as HTMLElement[]
   if (!cards.length) return null
   let best: { card: HTMLElement; dist: number } | null = null
   for (const card of cards) {
@@ -126,7 +144,7 @@ function getCzarHoverCardAt(x: number, y: number) {
 }
 
 function updateCzarHoverAt(x: number, y: number) {
-  if (!props.isCzarPhase || !props.czarRevealReady) {
+  if (!isCzarPhase.value || !props.czarRevealReady) {
     clearCzarHover()
     return
   }
@@ -142,8 +160,11 @@ function updateCzarHoverAt(x: number, y: number) {
 }
 
 function getCzarCursorIntroPosition() {
-  if (lastCzarCursor.value) return denormalizeCursor(lastCzarCursor.value)
-  const blackCard = props.blackCardRef.value
+  if (lastCzarCursor.value) {
+    const lastPos = denormalizeCursor(lastCzarCursor.value)
+    if (lastPos) return lastPos
+  }
+  const blackCard = props.blackCardRef
   if (blackCard) {
     const rect = blackCard.getBoundingClientRect()
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
@@ -190,7 +211,7 @@ function showCzarCursor() {
   gsap.set(el, { x: startPos.x, y: startPos.y, xPercent: -50, yPercent: -50, scale: 0.2, autoAlpha: 0 })
   gsap.to(el, { scale: 1, autoAlpha: 1, duration: 0.32, ease: "back.out(1.6)" })
   requestAnimationFrame(() => refreshCzarCursorHotspot())
-  setNativeCursorHidden(props.isCurrentPlayerCardSelector)
+  setNativeCursorHidden(isCurrentPlayerCardSelector.value)
 }
 
 function hideCzarCursor(duration = 0.22, unhideNative = false) {
@@ -231,10 +252,13 @@ function emitCzarCursorUpdate(pos: { x: number; y: number }, visible = true) {
 }
 
 function onCzarPointerMove(e: PointerEvent) {
-  if (!props.isCzarPhase) return
-  if (!props.isCurrentPlayerCardSelector) return
-  const inBounds = isCursorInBounds(e.clientX, e.clientY)
-  const normalized = normalizeCursor(e.clientX, e.clientY)
+  if (!isCzarPhase.value) return
+  if (!isCurrentPlayerCardSelector.value) return
+  const rect = getCursorAreaRect()
+  if (!rect) return
+  const inBounds = isCursorInBounds(e.clientX, e.clientY, rect)
+  const normalized = normalizeCursor(e.clientX, e.clientY, rect)
+  if (!normalized) return
   if (!inBounds) {
     czarCursorPending = null
     if (!czarCursorHideTimeout) {
@@ -261,8 +285,8 @@ function onCzarPointerMove(e: PointerEvent) {
     const next = czarCursorPending
     czarCursorPending = null
     lastCzarCursor.value = next
-    const pos = denormalizeCursor(next)
-    setCzarCursorPosition(pos.x, pos.y)
+    const pos = denormalizeCursor(next, rect)
+    if (pos) setCzarCursorPosition(pos.x, pos.y)
     if (!czarCursorSentVisible) {
       czarCursorSentVisible = true
       if (!cursorVisible.value) showCzarCursor()
@@ -272,8 +296,6 @@ function onCzarPointerMove(e: PointerEvent) {
 }
 
 function startCzarCursorTracking() {
-  if (!props.isCzarPhase) return
-  if (!props.isCurrentPlayerCardSelector) return
   window.addEventListener("pointermove", onCzarPointerMove, true)
   window.addEventListener("pointerdown", onCzarPointerMove, true)
   czarCursorSentVisible = false
@@ -282,7 +304,6 @@ function startCzarCursorTracking() {
     clearTimeout(czarCursorHideTimeout)
     czarCursorHideTimeout = null
   }
-  setNativeCursorHidden(cursorVisible.value)
 }
 
 function stopCzarCursorTracking() {
@@ -312,22 +333,24 @@ watch(
   () => {
     const payload = lobby.czarCursor
     if (!payload) return
-    if (props.isCurrentPlayerCardSelector) return
+    if (isCurrentPlayerCardSelector.value) return
     if (payload.visible === false) {
       if (cursorVisible.value) hideCzarCursor()
       return
     }
+    const rect = getCursorAreaRect()
+    if (!rect) return
     lastCzarCursor.value = { x: payload.x, y: payload.y }
-    if (!props.isCzarPhase) return
+    if (!isCzarPhase.value) return
     if (!cursorVisible.value) showCzarCursor()
-    const pos = denormalizeCursor(payload)
-    if (props.isCurrentPlayerCardSelector) setCzarCursorPosition(pos.x, pos.y)
-    else smoothCzarCursorPosition(pos.x, pos.y)
+    const pos = denormalizeCursor(payload, rect)
+    if (!pos) return
+    smoothCzarCursorPosition(pos.x, pos.y)
   }
 )
 
 watch(
-  () => [props.isCzarPhase, props.isCurrentPlayerCardSelector],
+  () => [isCzarPhase.value, isCurrentPlayerCardSelector.value],
   ([isCzar, isSelector]) => {
     if (isCzar && isSelector) startCzarCursorTracking()
     else stopCzarCursorTracking()
@@ -345,10 +368,6 @@ watch(
 )
 
 onMounted(() => {
-  if (props.isCzarPhase) {
-    showCzarCursor()
-    startCzarCursorTracking()
-  }
   window.addEventListener("resize", onWindowResize)
 })
 

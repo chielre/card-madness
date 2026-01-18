@@ -31,6 +31,13 @@ type RoundState = {
     playerSelectedCards: { playerId: string; card?: WhiteCard | null; locked?: boolean }[]
 }
 
+export type SelectedCardEntry = {
+    playerId: string
+    card?: WhiteCard | null
+    locked?: boolean
+    resolved?: { text?: string }
+}
+
 type Game = {
     lobbyId: string,
     host: string,
@@ -326,6 +333,29 @@ export const useLobbyStore = defineStore('lobby', {
             } catch {
                 return null
             }
+        },
+
+        getSelectedEntriesForBoard(): SelectedCardEntry[] {
+            const entries = this.phase === 'czar'
+                ? (this.currentRound?.playerSelectedCards ?? [])
+                : (this.currentRound?.playerSelectedCards ?? []).filter(
+                    (entry) => entry.playerId !== this.getCurrentPlayer()?.id
+                )
+
+            if (!entries.length) return []
+            if (this.phase !== 'czar') return entries.map((entry) => ({ ...entry, resolved: null }))
+
+            if (entries.some((entry) => !entry.card)) {
+                return entries.map((entry) => ({ ...entry, resolved: null }))
+            }
+
+            const resolved = resolveWhiteCards(entries.map((entry) => entry.card as WhiteCard))
+            return entries.map((entry, idx) => ({ ...entry, resolved: resolved[idx] }))
+        },
+
+        getSelectedEntryForPlayerId(playerId: string | null): SelectedCardEntry | null {
+            if (!playerId) return null
+            return this.getSelectedEntriesForBoard().find((entry) => entry.playerId === playerId) ?? null
         },
 
 
