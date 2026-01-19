@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
-     
+
       - name: Clean install (workaround rollup optional deps)
         run: |
           rm -rf node_modules package-lock.json
@@ -33,11 +33,11 @@ jobs:
 
       - name: Build
         run: |
-          npm run build
           npm run install-packs
-        env: 
+          npm run build
+        env:
           VITE_WS_SERVER_URL: ${{ secrets.SERVER_WS_URL }}
-          
+
       - name: SPA fallback
         run: cp dist/index.html dist/404.html
       - name: Verify dist
