@@ -658,7 +658,7 @@ export const resetGameForLobby = ({ games, lobbyId }) => {
 
     game.currentRound = null
     game.rounds = null
-    game.selectedPacks = null
+    game.selectedPacks = []
     game.players = (game.players ?? []).map(resetPlayerForLobby)
 
     games.set(lobbyId, game)
