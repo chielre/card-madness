@@ -11,10 +11,18 @@ const router = useRouter();
 
 const nameInput = ref('')
 const errorMessage = ref('')
+const isCreating = ref(false)
 
+const shouldSkipName = computed(() => {
+    const stage = (import.meta as any).env?.STAGE
+    const skipName = (import.meta as any).env?.DEV_SKIP_NAME
+    return stage === 'development' && String(skipName) === '1'
+})
 
 const createLobby = async () => {
+    if (isCreating.value) return
     if (!nameInput.value.trim()) return
+    isCreating.value = true
     try {
         const res = await lobby.createLobby(nameInput.value);
         if ((res as any)?.error === 'name_too_long') {
@@ -25,8 +33,16 @@ const createLobby = async () => {
         return router.push({ name: 'game', params: { id: lobby.lobbyId } })
     } catch (e) {
         errorMessage.value = e instanceof Error ? e.message : 'Lobby kan niet worden gemaakt'
+    } finally {
+        isCreating.value = false
     }
 }
+
+onMounted(() => {
+    if (!shouldSkipName.value) return
+    nameInput.value = 'Player 1'
+    createLobby()
+})
 
 </script>
 
@@ -39,14 +55,14 @@ const createLobby = async () => {
         <div>
             <img class="logo m-auto" width="300" src="../assets/images/logo.png" alt="">
 
-            <div class="mt-4 bg-white border-4 border-b-8 rounded-xl border-black p-8 text-black">
+            <div v-if="!shouldSkipName" class="mt-4 bg-white border-4 border-b-8 rounded-xl border-black p-8 text-black">
                 <div class="text-black space-y-3">
                     <input v-model="nameInput" type="text" class="border-4 text-xl font-black border-black rounded-xl px-4 py-2 w-full" placeholder="Your name" />
                 </div>
                 <p v-if="errorMessage" class="text-red-600">{{ errorMessage }}</p>
             </div>
-            <div class="flex mt-4">
-                <BaseButton @click="createLobby" size="lg">Create game</BaseButton>
+            <div v-if="!shouldSkipName" class="flex mt-4">
+                <BaseButton :disabled="isCreating" @click="createLobby" size="lg">Create game</BaseButton>
             </div>
         </div>
     </div>

@@ -9,6 +9,7 @@ import {
     blackCardExists,
     pickFairWhiteCard
 } from '../utils/cards.js'
+import { POINTS_CZAR_PICKED, POINTS_CZAR_SELECT } from '../config/points.js'
 
 const MAX_PLAYER_NAME_LENGTH = 25
 const normalizeName = (name) => (name ?? '').toString().trim()
@@ -42,7 +43,8 @@ export const createGame = ({ games, hostId, hostName, language }) => {
             ready: false,
             language: hostLanguage,
             white_cards: [],
-            eligibleFromRound: 1
+            eligibleFromRound: 1,
+            points: 0,
         }],
         language: hostLanguage,
         phase: 'lobby',
@@ -81,7 +83,7 @@ export const prepareGame = async ({ games, lobbyId }) => {
 
     // 1) Create 4 default rounds
     game.rounds = game.rounds ?? {}
-    for (let r = 1; r <= 12; r++) {
+    for (let r = 1; r <= 3; r++) {
         if (!game.rounds[r]) game.rounds[r] = {
             cardSelector: { player: null, selectedCard: {} },
             blackCard: null,
@@ -195,7 +197,8 @@ export const joinGame = ({ games, lobbyId, player }) => {
         name: normalizeName(player?.name),
         language: normalizeLanguage(player?.language),
         white_cards: [],
-        eligibleFromRound: getEligibleFromRound(game)
+        eligibleFromRound: getEligibleFromRound(game),
+        points: 0,
     }
 
     game.players.push(nextPlayer)
@@ -626,7 +629,38 @@ export const selectCzarCard = ({ games, lobbyId, playerId, entry }) => {
     round.cardSelector.selectedCard = match
 
     game.rounds[roundNumber] = round
+    const winner = game.players?.find((p) => p.id === match.playerId)
+    if (winner) {
+        const previous = Number(winner.points) || 0
+        winner.points = previous + POINTS_CZAR_PICKED
+    }
+    const czar = game.players?.find((p) => p.id === playerId)
+    if (czar) {
+        const previous = Number(czar.points) || 0
+        czar.points = previous + POINTS_CZAR_SELECT
+    }
     games.set(lobbyId, game)
 
     return { game, round, selected: match }
+}
+
+const resetPlayerForLobby = (player) => ({
+    ...player,
+    ready: false,
+    white_cards: [],
+    eligibleFromRound: 1,
+    points: 0,
+})
+
+export const resetGameForLobby = ({ games, lobbyId }) => {
+    const game = games.get(lobbyId)
+    if (!game) return { error: "not_found" }
+
+    game.currentRound = null
+    game.rounds = null
+    game.selectedPacks = []
+    game.players = (game.players ?? []).map(resetPlayerForLobby)
+
+    games.set(lobbyId, game)
+    return { game }
 }

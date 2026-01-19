@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch, nextTick, onBeforeUnmount } from 'vue'
+
+
 import { useLobbyStore } from '@/store/LobbyStore'
 import { useAudioStore } from '@/store/AudioStore'
 import { useConnectionStore } from '@/store/ConnectionStore'
+import { useUiStore } from '@/store/UiStore'
+
 
 import { resolvePacks } from "@/utils/packs"
+import { strLimit } from "@/utils/str"
 
 import Close from 'vue-material-design-icons/Close.vue';
 
@@ -15,20 +20,47 @@ import ToggleSwitch from "@/components/ui/ToggleSwitch.vue"
 import BaseButton from "@/components/ui/BaseButton.vue"
 import CardPack from '@/components/CardPack.vue'
 
-import ReadyListModal from '@/components/screens/game/ReadyListModal.vue'
-import PackInfoModal from '@/components/screens/game/PackInfoModal.vue'
+import ReadyListModal from '@/components/modals/game/ReadyListModal.vue'
+import PackInfoModal from '@/components/modals/PackInfoModal.vue'
 
 const lobby = useLobbyStore()
 const audio = useAudioStore()
+const ui = useUiStore()
 const connection = useConnectionStore()
 
 const readyModalRef = ref<InstanceType<typeof ReadyListModal> | null>(null)
 const packInfoModalRef = ref<InstanceType<typeof PackInfoModal> | null>(null)
-const lobbyRootRef = ref<HTMLElement | null>(null)
 const currentMusicPackId = ref<string | null>(null)
 
 const selectedPackIds = computed(() => lobby.selectedPacks)
 const resolvedPacks = computed(() => resolvePacks())
+
+type PackFilter = 'nsfw'
+
+const activeFilters = ref<Set<PackFilter>>(new Set())
+
+const toggleAll = () => {
+    activeFilters.value = new Set()
+}
+
+const toggleFilter = (f: PackFilter) => {
+    const next = new Set(activeFilters.value)
+    next.has(f) ? next.delete(f) : next.add(f)
+    activeFilters.value = next
+}
+
+const packPredicates: Record<PackFilter, (pack: any) => boolean> = {
+    nsfw: (pack) => !!pack.nsfw,
+}
+
+const filteredPacks = computed(() => {
+    const filters = [...activeFilters.value]
+    if (filters.length === 0) return resolvedPacks.value
+
+    return resolvedPacks.value.filter((pack) =>
+        filters.some((f) => packPredicates[f](pack))
+    )
+})
 
 const selectPack = (packId: string) => {
     if (!lobby.getCurrentPlayerIsHost()) return
@@ -52,6 +84,16 @@ const syncPackSelection = () => {
 
 }
 
+const copyLobbyLink = async () => {
+    const route = router.resolve({
+        name: 'game',
+        params: { id: lobby.lobbyId }
+    })
+
+    const url = new URL(route.href, window.location.origin)
+    await navigator.clipboard.writeText(url.toString())
+}
+
 const startGame = async () => {
     if (!lobby.getCurrentPlayerIsHost() && lobby.lobbyId != 'TEST01') return
     await connection.emitWithAck('room:phase-set', { lobbyId: lobby.lobbyId, phase: 'starting' })
@@ -69,6 +111,15 @@ const closeReadyModal = () => {
     readyModalRef.value?.reset()
 }
 
+const resetLobbyUi = (opts?: { keepReadyModal?: boolean }) => {
+    activeFilters.value = new Set()
+    packInfoModalRef.value?.close()
+    if (!opts?.keepReadyModal) {
+        readyModalRef.value?.reset()
+    }
+    currentMusicPackId.value = null
+}
+
 const canKickPlayer = (playerId: string) =>
     lobby.getCurrentPlayerIsHost() && playerId !== connection.getSocketSafe()?.id
 
@@ -79,6 +130,18 @@ const kickPlayer = async (playerId: string) => {
 
 watch(selectedPackIds, () => syncPackSelection(), { immediate: true })
 
+watch(
+    () => lobby.phase,
+    (phase, prev) => {
+        if (phase === 'starting') {
+            resetLobbyUi({ keepReadyModal: true })
+            return
+        }
+        if (phase === 'lobby' || prev === 'starting') {
+            resetLobbyUi()
+        }
+    }
+)
 
 watch(
     () => lobby.phaseTimeoutTick,
@@ -93,16 +156,29 @@ defineExpose({ openReadyModal, closeReadyModal })
 
 <template>
     <section ref="lobbyRootRef">
+
+
         <div class="flex justify-between items-center gap-4">
 
-            <h1 class="text-4xl font-bold text-white">Lobby: {{ lobby.lobbyId }} </h1>
-            <div class="border-4 border-b-8 border-black bg-white text-xl text-black font-black px-3 rounded-full">{{ lobby.players.length }} players</div>
+            <div class="p-4 flex-1 flex items-center gap-4">
+                <img class="" width="150" src="../../../assets/images/logo.png" alt="" />
+                <div class="flex gap-2 items-center">
+
+                    <div class="border-2 border-b-4 border-black bg-white text-black  px-3 rounded-full font-bold"><span class="font-black">{{ lobby.players.length }}</span> players</div>
+                </div>
+            </div>
+
+            <div class="p-4 flex-1 flex items-center justify-end gap-4">
+
+                <BaseButton size="md" color="pink" @click="ui.openSettings" icon="Cog"></BaseButton>
+                <BaseButton size="md" color="pink" icon="Logout" @click="lobby.confirmLeaveLobby"></BaseButton>
+            </div>
 
         </div>
         <div class="flex gap-6 mt-8">
 
             <!-- player list-->
-            <div class="w-100 bg-white border-4 border-b-8 rounded-xl border-black p-4">
+            <div class="w-100 bg-white border-4 border-b-8 rounded-xl border-black p-4 flex justify-between flex-col">
                 <ul class="space-y-2">
                     <li v-for="player in lobby.players" :key="player.id" class="group flex justify-between items-center gap-4 text-black text-2xl font-bold p-4 rounded-xl even:bg-gray-100">
                         <div class="flex items-center gap-4">
@@ -111,12 +187,7 @@ defineExpose({ openReadyModal, closeReadyModal })
                         </div>
                         <div class="flex items-center gap-4 ">
                             <div class="flex gap-4 opacity-0 group-hover:opacity-100">
-                                <button
-                                    v-if="canKickPlayer(player.id)"
-                                    type="button"
-                                    class="flex items-center justify-center w-10 h-10 hover:bg-gray-200 rounded-lg"
-                                    @click.stop="kickPlayer(player.id)"
-                                >
+                                <button v-if="canKickPlayer(player.id)" type="button" class="flex items-center justify-center w-10 h-10 hover:bg-gray-200 rounded-lg" @click.stop="kickPlayer(player.id)">
                                     <Close />
                                 </button>
                             </div>
@@ -131,19 +202,43 @@ defineExpose({ openReadyModal, closeReadyModal })
 
                     </li>
                 </ul>
+                <div class="p-4 bg-gray-100 rounded-xl">
+
+
+                    <BaseButton class="w-full" size="sm" icon="ContentCopy" @click="copyLobbyLink">Copy link</BaseButton>
+                </div>
             </div>
 
             <!-- card decks -->
-            <div class="bg-black/50 backdrop-blur-sm rounded-xl border-black p-4 transition-all">
+            <div class="w-full max-w-5xl bg-black/50 backdrop-blur-sm rounded-xl border-black p-4 transition-all">
+                <div class="flex gap-2 justify-between">
+                    <div class="flex-1 flex gap-3 mb-4 bg-black/50 p-4 rounded-xl text-white">
+                        <button class="font-bold cursor-pointer" @click="toggleAll">
+                            All
+                        </button>
 
-                <div class="grid grid-cols-4 gap-3">
-                    <CardPack v-for="pack in resolvedPacks" :pack="pack" :key="pack.id" :selected="selectedPackIds.includes(pack.id)" @click="selectPack(pack.id)" @show-info="openPackInfo" />
+                        <button class="font-bold cursor-pointer" :class="activeFilters.has('nsfw') ? ' underline text-outline-black' : ''" @click="toggleFilter('nsfw')">
+                            NSFW
+                        </button>
+                    </div>
+                    <div class="mb-4 bg-black/50 p-4 rounded-xl text-white font-bold">
+                        <div v-if="!selectedPackIds?.length || selectedPackIds.length <= 0">
+                            packs selected: <span class="underline">All packs</span>
+                        </div>
+                        <div v-else-if="selectedPackIds?.length > 0">
+                            packs selected: ({{ selectedPackIds.length ?? 0 }}/{{ resolvedPacks.length ?? 0 }})
+                        </div>
+                    </div>
+
+                </div>
+                <div class="grid grid-cols-4 grid-rows-2 auto-rows-max max-h-[calc(100vh-300px)] content-start overflow-y-auto overflow-x-visible gap-3 p-3">
+                    <CardPack v-for="pack in filteredPacks" :pack="pack" :key="pack.id" :selected="selectedPackIds.includes(pack.id)" @click="selectPack(pack.id)" @show-info="openPackInfo" />
                 </div>
             </div>
 
 
             <!-- lobby settings -->
-            <div class="w-100 flex flex-col gap-4">
+            <div class="flex flex-col gap-4">
 
                 <div class=" bg-white border-4 border-b-8 rounded-xl border-black p-6 text-black overflow-scroll-y max-h-full">
                     <Tabs>

@@ -10,9 +10,7 @@ import BaseButton from '@/components/ui/BaseButton.vue'
 import SettingsModal from '@/components/modals/SettingsModal.vue'
 import ConfirmModal from '@/components/modals/ConfirmModal.vue'
 
-import MenuIcon from 'vue-material-design-icons/Menu.vue';
-
-import LoadingPage from '@/pages/LoadingPage.vue'
+import LoadingPage from '@/components/screens/app/Loading.vue'
 import ConnectionError from '@/pages/ConnectionError.vue'
 
 const connection = useConnectionStore()
@@ -29,8 +27,6 @@ const hasJoined = computed(() =>
 
 
 
-const route = useRoute();
-const isDevRoute = computed(() => route.path.startsWith("/dev"));
 
 
 
@@ -39,18 +35,13 @@ const isPreloadingAudio = ref(false)
 const preloadProgress = ref(0)
 const preloadTotal = ref(1)
 
+const shouldSkipMusicPreload = computed(() => {
+    const stage = (import.meta as any).env?.STAGE
+    const skipPreload = (import.meta as any).env?.DEV_SKIP_MUSIC_PRELOAD
+    return stage === 'development' && String(skipPreload) === '1'
+})
 
-const onFirstInteraction = async () => {
-    if (firstInteracted.value || isPreloadingAudio.value) return
-    isPreloadingAudio.value = true
-    preloadProgress.value = 0
-    preloadTotal.value = 1
-
-    await audio.preloadAllAudioWithProgress((loaded, total) => {
-        preloadProgress.value = loaded
-        preloadTotal.value = total || 1
-    })
-
+const enableAudioSession = () => {
     firstInteracted.value = true
     isPreloadingAudio.value = false
     watch(() => hasJoined.value, (joined) => {
@@ -61,13 +52,35 @@ const onFirstInteraction = async () => {
     },
         { immediate: true }
     )
+}
+
+const onFirstInteraction = async () => {
+    if (firstInteracted.value || isPreloadingAudio.value) return
+    if (shouldSkipMusicPreload.value) {
+        enableAudioSession()
+        return
+    }
+    isPreloadingAudio.value = true
+    preloadProgress.value = 0
+    preloadTotal.value = 1
+
+    await audio.preloadAllAudioWithProgress((loaded, total) => {
+        preloadProgress.value = loaded
+        preloadTotal.value = total || 1
+    })
+
+    enableAudioSession()
 
 }
 
 onMounted(() => {
-
-
-
+    if (shouldSkipMusicPreload.value) {
+        watch(() => isConnected.value, (connected) => {
+            if (!connected) return
+            if (firstInteracted.value || isPreloadingAudio.value) return
+            enableAudioSession()
+        }, { immediate: true })
+    }
     connection.connect()
     // audio init happens on Play click
 })
@@ -77,7 +90,6 @@ onMounted(() => {
 
 
 
-    <!-- Show loading -->
     <LoadingPage v-if="isConnecting" />
     <ConnectionError v-else-if="!isConnecting && !isConnected" />
 

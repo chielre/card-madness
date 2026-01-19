@@ -10,6 +10,7 @@ import Cog from 'vue-material-design-icons/Cog.vue'
 import ScaleBalance from 'vue-material-design-icons/ScaleBalance.vue'
 import Minus from 'vue-material-design-icons/Minus.vue'
 import Logout from 'vue-material-design-icons/Logout.vue'
+import ContentCopy from 'vue-material-design-icons/ContentCopy.vue'
 
 
 type ButtonType = 'animated' | 'block'
@@ -21,7 +22,7 @@ const props = withDefaults(defineProps<{
   color?: ButtonColor
   size?: ButtonSize
   disabled?: boolean
-  icon?: 'Plus' | 'ChevronRight' | 'Music' | 'Github' | 'Cog'
+  icon?: 'Plus' | 'ChevronRight' | 'Music' | 'Github' | 'Cog' | 'Logout' | 'ContentCopy'
   iconPosition?: 'left' | 'right'
   iconClass?: string
 }>(), {
@@ -46,7 +47,8 @@ const icons = {
   ScaleBalance,
   Close,
   Minus,
-  Logout
+  Logout,
+  ContentCopy
 } as const
 
 const Icon = computed(() => (props.icon ? icons[props.icon] : null))
@@ -90,6 +92,8 @@ const sizeClasses = computed(() => {
       return 'btn-lg'
     case 'sm':
       return 'btn-sm'
+    case 'xs':
+      return 'btn-xs'
     default:
       return 'btn-md'
   }

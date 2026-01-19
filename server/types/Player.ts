@@ -13,4 +13,5 @@ export interface RoomPlayer {
     language: string
     white_cards: WhiteCard[]
     eligibleFromRound: number
+    points: number
 }

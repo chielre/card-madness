@@ -19,10 +19,12 @@ export function resolvePacksDir(packsDirEnv) {
 export function getPackFilterConfig() {
   const includeNsfwRaw = process.env.PACKS_DOWNLOAD_INCLUDE_NSFW
   const onlyCmRaw = process.env.PACKS_DOWNLOAD_ONLY_CM
+  const includeDeprecatedRaw = process.env.PACKS_DOWNLOAD_DEPRECATED
   const includeNsfw = includeNsfwRaw == null ? true : TRUTHY.has(String(includeNsfwRaw).toLowerCase())
   const onlyCm = onlyCmRaw == null ? false : TRUTHY.has(String(onlyCmRaw).toLowerCase())
+  const includeDeprecated = includeDeprecatedRaw == null ? false : TRUTHY.has(String(includeDeprecatedRaw).toLowerCase())
 
-  return { includeNsfw, onlyCm }
+  return { includeNsfw, onlyCm, includeDeprecated }
 }
 
 export function createSpinner(label) {
@@ -109,6 +111,11 @@ async function readPackMeta(packDir) {
   }
 }
 
+async function isPackDeprecated(packDir) {
+  const deprecatedPath = path.join(packDir, "DEPRECATED.MD")
+  return fsSync.existsSync(deprecatedPath)
+}
+
 async function shouldIncludePack(packDir, packName, filter) {
   if (filter.onlyCm && !packName.startsWith("cm_")) return false
   if (!filter.includeNsfw) {
@@ -121,15 +128,20 @@ async function shouldIncludePack(packDir, packName, filter) {
 async function copyPackDirs(sourceDir, targetDir, filter) {
   await fs.mkdir(targetDir, { recursive: true })
   const entries = await fs.readdir(sourceDir, { withFileTypes: true })
+  let deprecatedCount = 0
   for (const entry of entries) {
     if (!entry.isDirectory()) continue
     if (entry.name === ".github") continue
     const src = path.join(sourceDir, entry.name)
+    const deprecated = await isPackDeprecated(src)
+    if (deprecated && !filter.includeDeprecated) continue
     if (!(await shouldIncludePack(src, entry.name, filter))) continue
     const dst = path.join(targetDir, entry.name)
     await fs.rm(dst, { recursive: true, force: true })
     await fs.cp(src, dst, { recursive: true, force: true })
+    if (deprecated) deprecatedCount += 1
   }
+  return deprecatedCount
 }
 
 async function copyLicense(sourceDir, targetDir) {
@@ -165,8 +177,11 @@ export async function installOrUpdatePacks(packsDirEnv, { label, updateOnly = fa
     const { rootDir } = await fetchSource()
     spinner.update(updateOnly ? "Updating packs" : "Installing packs")
     await copyLicense(rootDir, packsDir)
-    await copyPackDirs(rootDir, packsDir, filter)
+    const deprecatedCount = await copyPackDirs(rootDir, packsDir, filter)
     spinner.stop(chalk.green(`${updateOnly ? "Packs updated" : "Packs installed"} to ${packsDir}`))
+    if (deprecatedCount > 0) {
+      console.log(chalk.yellow(`${deprecatedCount} deprecated pack(s).`))
+    }
   } catch (err) {
     spinner.fail("Pack install failed")
     throw err

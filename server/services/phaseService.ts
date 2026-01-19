@@ -1,5 +1,6 @@
-import { setPhase } from './gameService.js'
+import { resetGameForLobby, setPhase } from './gameService.js'
 import { clearRoundTimer, scheduleRoundTimer } from '../utils/roundTimers.js'
+import { emitPlayersUpdated } from '../io/emitters.js'
 
 export const transitionPhase = ({ games, io, lobbyId, to }) => {
     const res = setPhase({ games, lobbyId, to })
@@ -12,6 +13,21 @@ export const transitionPhase = ({ games, io, lobbyId, to }) => {
         scheduleRoundTimer({ io, lobbyId, round })
     } else {
         clearRoundTimer(lobbyId)
+    }
+
+    if (res.game.phase === 'lobby') {
+        const resetRes = resetGameForLobby({ games, lobbyId })
+        if (resetRes && !('error' in resetRes) && resetRes.game) {
+            emitPlayersUpdated({ io, lobbyId, game: resetRes.game })
+            io.to(lobbyId).emit('packs:updated', { packs: resetRes.game.selectedPacks })
+            io.to(lobbyId).emit('board:round-updated', {
+                currentRound: null,
+                roundNumber: null,
+            })
+            resetRes.game.players?.forEach((player) => {
+                io.to(player.id).emit('room:player-cards-updated', { cards: player.white_cards ?? [] })
+            })
+        }
     }
 
     return res

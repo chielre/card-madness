@@ -6,10 +6,8 @@ import { useLobbyStore } from '@/store/LobbyStore'
 import { useAudioStore } from '@/store/AudioStore'
 import { useUiStore } from '@/store/UiStore'
 
-// Screens (optioneel te gebruiken)
-import JoinScreen from '@/components/screens/game/Join.vue'
-import GameRoomScreen from '@/components/screens/game/GameRoom.vue'
-
+import JoinScreen from '@/components/screens/Join.vue'
+import GameScreen from '@/components/screens/Game.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -32,11 +30,18 @@ const lobbyId = route.params.id as string
 
 const players = computed(() => lobby.players)
 const hasJoined = computed(() => {
-    if (!socket) return false
-    return !!players.value.find((p) => p.id === socket?.id)
+    const socketId = connection.socketId
+    if (!socketId) return false
+    return !!players.value.find((p) => p.id === socketId)
+})
+const shouldSkipName = computed(() => {
+    const stage = (import.meta as any).env?.STAGE
+    const skipName = (import.meta as any).env?.DEV_SKIP_NAME
+    return stage === 'development' && String(skipName) === '1'
 })
 
-const normalizePlayers = (playerList: { id: string; name: string; ready?: boolean }[]) => playerList.map((p) => ({ ...p, ready: !!p.ready }))
+const normalizePlayers = (playerList: { id: string; name: string; ready?: boolean; points?: number }[]) =>
+    playerList.map((p) => ({ ...p, ready: !!p.ready, points: Number(p.points) || 0 }))
 
 const roomNotFound = () => {
     return router.replace({
@@ -126,7 +131,7 @@ const handlePlayerReady = (payload: { id: string; ready: boolean }) => {
 
 
 }
-const handlePlayerJoined = (payload: { id: string; name: string; ready?: boolean }) => {
+const handlePlayerJoined = (payload: { id: string; name: string; ready?: boolean; points?: number }) => {
     lobby.addPlayer(payload)
 
 }
@@ -148,6 +153,7 @@ Game socket events
 const handleGamePhaseChange = (payload: { phase: string }) => {
     if (payload.phase) {
         lobby.setPhase(payload.phase)
+        schedulePhaseSync(payload.phase)
     }
 }
 const handleGamePhaseTimer = (payload: { phase: string; durationMs?: number; expiresAt?: number }) => {
@@ -159,6 +165,30 @@ const handleGamePhaseTimeout = (payload: { phase: string }) => {
         lobby.markPhaseTimeout()
     }
 
+}
+
+let phaseSyncInFlight = false
+let phaseSyncQueued = false
+const activeRoundPhases = new Set(["board", "czar", "czar-result"])
+
+const schedulePhaseSync = async (nextPhase: string) => {
+    const needsRound = activeRoundPhases.has(nextPhase) && !lobby.currentRound
+    const needsPlayer = !lobby.getCurrentPlayer()
+    if (!needsRound && !needsPlayer) return
+    if (phaseSyncInFlight) {
+        phaseSyncQueued = true
+        return
+    }
+    phaseSyncInFlight = true
+    try {
+        await lobby.fetchState(lobbyId)
+    } finally {
+        phaseSyncInFlight = false
+        if (phaseSyncQueued) {
+            phaseSyncQueued = false
+            void schedulePhaseSync(nextPhase)
+        }
+    }
 }
 
 
@@ -241,6 +271,10 @@ onMounted(async () => {
     socket.on('czar:cursor-update', handleCzarCursorUpdate)
 
 
+    if (shouldSkipName.value && !hasJoined.value) {
+        nameInput.value = `Player ${players.value.length + 1}`
+        await joinWithName()
+    }
 })
 
 onBeforeUnmount(() => {
@@ -311,9 +345,9 @@ watch(
             <div class="bg-noise"></div>
             <div class="bg-grid"></div>
 
-            <JoinScreen v-if="!hasJoined && !isLoading" :lobby-id="lobbyId" v-model:name-input="nameInput" :error-message="errorMessage" :players="players" @join="joinWithName" />
+            <JoinScreen v-if="!hasJoined && !isLoading && !shouldSkipName" :lobby-id="lobbyId" v-model:name-input="nameInput" :error-message="errorMessage" :players="players" @join="joinWithName" />
 
-            <GameRoomScreen v-else-if="hasJoined && !isLoading" />
+            <GameScreen v-else-if="hasJoined && !isLoading" />
         </div>
     </div>
 </template>

@@ -1,84 +1,51 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import gsap from "gsap"
-import { CustomEase } from "gsap/CustomEase"
 import { Sortable } from "@shopify/draggable"
 
-import { resolveBlackCard, resolveWhiteCards } from "@/utils/cards"
-import PersonIcon from "vue-material-design-icons/Account.vue"
-import Close from "vue-material-design-icons/Close.vue"
+import { resolveBlackCard } from "@/utils/cards"
 
 import { useLobbyStore } from "@/store/LobbyStore"
-import { useConnectionStore } from "@/store/ConnectionStore"
 import { useAudioStore } from "@/store/AudioStore"
 import { useUiStore } from '@/store/UiStore'
 
-import CountdownTimer from "../../../components/CountdownTimer.vue"
-import BaseButton from "../../../components/ui/BaseButton.vue"
+// CHECK config
+import CzarCursor from "@/components/game/CzarCursor.vue"
+import { CZAR_HOVER_TYPE_MS } from "@/components/game/czarCursorConfig"
 
-gsap.registerPlugin(CustomEase)
+import BoardTimer from "@/components/game/BoardTimer.vue"
+
+// CHECK config
+import SelectedCardsGrid from "@/components/game/SelectedCardsGrid.vue"
+import { usePendingSelections } from "@/components/game/usePendingSelections"
+import PlayerList from "@/components/game/PlayerList.vue"
+
+import BaseButton from "../../../components/ui/BaseButton.vue"
 
 const lobby = useLobbyStore()
 const audioStore = useAudioStore()
-const connection = useConnectionStore()
 const ui = useUiStore()
 
 
-/* ---------- refs ---------- */
-const timerRef = ref<InstanceType<typeof CountdownTimer> | null>(null)
-const timerWrapRef = ref<HTMLElement | null>(null)
 const handRef = ref<HTMLElement | null>(null)
 const playRef = ref<HTMLElement | null>(null)
 const boardGridRef = ref<HTMLElement | null>(null)
 const boardAreaRef = ref<HTMLElement | null>(null)
 const sortableRef = ref<Sortable | null>(null)
-
-const transitionEl1 = ref<HTMLElement | null>(null)
-const transitionEl2 = ref<HTMLElement | null>(null)
-const transitionEl3 = ref<HTMLElement | null>(null)
-const transitionEl4 = ref<HTMLElement | null>(null)
-
 const BlackCardRef = ref<HTMLElement | null>(null)
-const BlackCardGhostRef = ref<HTMLElement | null>(null)
-const czarResultPlayerRef = ref<HTMLElement | null>(null)
-const czarNextRoundButton = ref<HTMLElement | null>(null)
-const czarCursorRef = ref<HTMLElement | null>(null)
+const czarCursorComponentRef = ref<InstanceType<typeof CzarCursor> | null>(null)
 
-/* ---------- computed ---------- */
-const currentPlayerCards = computed(() => lobby.getCurrentPlayerCards())
-const isCurrentPlayerCardSelector = computed(() => lobby.getCurrentPlayerIsCardSelector())
-const currentPlayer = computed(() => lobby.getCurrentPlayer())
+
+const currentPlayerId = computed(() => lobby.getCurrentPlayerId())
+const currentPlayerCards = computed(() => lobby.getCurrentPlayerWhiteCards())
+const isCurrentPlayerCzar = computed(() => lobby.getCurrentPlayerIsCzar())
 const isBoardPhase = computed(() => lobby.phase === "board")
 const isCzarPhase = computed(() => lobby.phase === "czar")
-const isCzarResultPhase = computed(() => lobby.phase === "czar-result")
-const isRevealPhase = computed(() => isCzarPhase.value || isCzarResultPhase.value)
 const isRoundActive = computed(() => isBoardPhase.value && lobby.roundStartedTick > lobby.roundTimeoutTick)
-const isWaitingForRound = computed(() => {
-    const player = currentPlayer.value
-    if (!player) return false
-    if (!lobby.currentRoundNumber) return false
-    if (!["board", "czar", "czar-result"].includes(lobby.phase)) return false
-    const eligibleFromRound = Number(player.eligibleFromRound) || 1
-    return eligibleFromRound > lobby.currentRoundNumber
-})
+const isWaitingForRound = computed(() => lobby.isCurrentPlayerWaitingForRound())
 
-const canKickPlayer = (playerId: string) =>
-    lobby.getCurrentPlayerIsHost() && playerId !== connection.getSocketSafe()?.id
-
-const kickPlayer = async (playerId: string) => {
-    if (!canKickPlayer(playerId)) return
-    await lobby.kickPlayer(lobby.lobbyId, playerId)
-}
-
-const canCzarSelect = computed(() => isCzarPhase.value && isCurrentPlayerCardSelector.value)
-const canStartNextRound = computed(() => isCzarResultPhase.value && isCurrentPlayerCardSelector.value)
-
-const useEmptyBlackCard = ref(false)
 const blackCardHtml = computed(() => lobby.getCurrentBlackCardHtml() || "...")
-const blackCardDisplayHtml = computed(() =>
-    useEmptyBlackCard.value ? blackCardEmptyHtml.value : blackCardHtml.value
-)
-const blackCardEmptyHtml = computed(() => {
+const blackCardTemplateHtml = computed(() => {
     const blackCard = lobby.currentRound?.blackCard
     if (!blackCard) return blackCardHtml.value || "..."
     try {
@@ -87,673 +54,31 @@ const blackCardEmptyHtml = computed(() => {
         return blackCardHtml.value || "..."
     }
 })
-const selectedCzarCardPlayerId = computed(() => lobby.currentRound?.cardSelector?.selectedCard?.playerId ?? null)
-const selectedCzarPlayer = computed(() => lobby.players.find((p) => p.id === selectedCzarCardPlayerId.value) ?? null)
 
-const showDebugPhaseButtons = computed(() => {
-    const stage = (import.meta as any).env?.STAGE
-    const devButtons = (import.meta as any).env?.DEV_PHASE_BUTTONS
-    return stage === "development" && String(devButtons) === "1"
-})
-
-const selectedCards = computed(() => {
-    const entries = isRevealPhase.value
-        ? (lobby.currentRound?.playerSelectedCards ?? [])
-        : (lobby.currentRound?.playerSelectedCards ?? []).filter(
-            (entry) => entry.playerId !== lobby.getCurrentPlayer()?.id
-        )
-
-    if (!entries.length) return []
-    if (!isRevealPhase.value) return entries.map((entry) => ({ ...entry, resolved: null }))
-
-    if (entries.some((entry) => !entry.card)) return entries.map((entry) => ({ ...entry, resolved: null }))
-
-    const resolved = resolveWhiteCards(entries.map((entry) => entry.card))
-    return entries.map((entry, idx) => ({ ...entry, resolved: resolved[idx] }))
-})
-
-/* ---------- selection lock (5s undo window) ---------- */
 const CARD_LOCK_WINDOW_MS = 10000
-const LOCK_BOOST_COOLDOWN_MS = 120
 const LOCK_BOOST_PULSE_MS = 220
-const pendingCardState = ref(new Map<string, { status: "pending" | "locked" }>())
-const pendingCardTimers = new Map<string, ReturnType<typeof setTimeout>>()
-const lockBoostLastAt = new Map<string, number>()
-const pendingCardTotals = new Map<string, number>()
-const pendingCountdownTimers = new Map<string, ReturnType<typeof setInterval>>()
-const pendingCountdownExpiresAt = new Map<string, number>()
-const pendingProgressTweens = new WeakMap<HTMLElement, gsap.core.Tween>()
 
-/* ---------- czar cursor ---------- */
-const czarCursorVisible = ref(false)
-const lastCzarCursor = ref<{ x: number; y: number } | null>(null)
-let czarCursorRaf = 0
-let czarCursorPending: { x: number; y: number } | null = null
-let czarHoverCard: HTMLElement | null = null
-let czarCursorSentVisible = false
-let czarCursorHideTimeout: ReturnType<typeof setTimeout> | null = null
-let czarCursorHotspot = { x: 0, y: 0 }
-let czarCursorHiding = false
-
-const CZAR_CURSOR_MARGIN_PX = 120
-const CZAR_CURSOR_HIDE_DELAY_MS = 140
-const CZAR_HOVER_PAD_PX = 60
-const CZAR_HOVER_TYPE_MS = 2000
 let czarHoverPlayerId: string | null = null
 const czarRevealReady = ref(false)
-let czarRevealReadyTimeout: ReturnType<typeof setTimeout> | null = null
 
-function clamp01(value: number) {
-    return Math.min(1, Math.max(0, value))
-}
 
-function getCursorAreaRect() {
-    const area = boardAreaRef.value
-    if (area) return area.getBoundingClientRect()
-    return { left: 0, top: 0, width: window.innerWidth || 1, height: window.innerHeight || 1 }
-}
-
-function refreshCzarCursorHotspot() {
-    const cursor = czarCursorRef.value
-    if (!cursor) return
-    const pointer = cursor.querySelector(".czar-cursor__pointer") as HTMLElement | null
-    if (!pointer) {
-        czarCursorHotspot = { x: 0, y: 0 }
-        return
-    }
-    const cursorRect = cursor.getBoundingClientRect()
-    const pointerRect = pointer.getBoundingClientRect()
-    const pointerTipX = pointerRect.left + pointerRect.width / 2
-    const pointerTipY = pointerRect.top + pointerRect.height
-    const anchorX = cursorRect.left + cursorRect.width / 2
-    const anchorY = cursorRect.top + cursorRect.height / 2
-    czarCursorHotspot = { x: anchorX - pointerTipX, y: anchorY - pointerTipY }
-}
-
-function isCursorInBounds(x: number, y: number) {
-    const rect = getCursorAreaRect()
-    return (
-        x >= rect.left - CZAR_CURSOR_MARGIN_PX
-        && x <= rect.left + rect.width + CZAR_CURSOR_MARGIN_PX
-        && y >= rect.top - CZAR_CURSOR_MARGIN_PX
-        && y <= rect.top + rect.height + CZAR_CURSOR_MARGIN_PX
-    )
-}
-
-function normalizeCursor(x: number, y: number) {
-    const rect = getCursorAreaRect()
-    const nx = (x - rect.left) / rect.width
-    const ny = (y - rect.top) / rect.height
-    return { x: clamp01(nx), y: clamp01(ny) }
-}
-
-function denormalizeCursor(pos: { x: number; y: number }) {
-    const rect = getCursorAreaRect()
-    return {
-        x: Math.round(rect.left + pos.x * rect.width),
-        y: Math.round(rect.top + pos.y * rect.height),
-    }
-}
-
-function clearCzarHover() {
-    if (!czarHoverCard) return
-    czarHoverCard.classList.remove("czar-card-hover")
-    czarHoverCard = null
-}
-
-function getCzarHoverCardAt(x: number, y: number) {
-    if (!boardGridRef.value) return null
-    const cards = Array.from(boardGridRef.value.querySelectorAll(".card-flip")) as HTMLElement[]
-    if (!cards.length) return null
-    let best: { card: HTMLElement; dist: number } | null = null
-    for (const card of cards) {
-        const rect = card.getBoundingClientRect()
-        const left = rect.left - CZAR_HOVER_PAD_PX
-        const right = rect.right + CZAR_HOVER_PAD_PX
-        const top = rect.top - CZAR_HOVER_PAD_PX
-        const bottom = rect.bottom + CZAR_HOVER_PAD_PX
-        if (x < left || x > right || y < top || y > bottom) continue
-        const cx = rect.left + rect.width / 2
-        const cy = rect.top + rect.height / 2
-        const dist = (x - cx) ** 2 + (y - cy) ** 2
-        if (!best || dist < best.dist) {
-            best = { card, dist }
-        }
-    }
-    return best?.card ?? null
-}
-
-function updateCzarHoverAt(x: number, y: number) {
-    if (!isCzarPhase.value) {
-        clearCzarHover()
-        startCzarHoverTyping(null)
-        return
-    }
-    if (!czarRevealReady.value) {
-        clearCzarHover()
-        startCzarHoverTyping(null)
-        return
-    }
-    const nextCard = getCzarHoverCardAt(x, y)
-    if (nextCard === czarHoverCard) return
-    clearCzarHover()
-    if (nextCard) {
-        czarHoverCard = nextCard
-        czarHoverCard.classList.add("czar-card-hover")
-    }
-    const playerId = nextCard?.getAttribute("data-selected-player-id") ?? null
-    startCzarHoverTyping(playerId)
-}
-
-function getCzarCursorIntroPosition() {
-    if (lastCzarCursor.value) return denormalizeCursor(lastCzarCursor.value)
-    const blackCard = BlackCardRef.value
-    if (blackCard) {
-        const rect = blackCard.getBoundingClientRect()
-        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
-    }
-    return { x: window.innerWidth / 2, y: window.innerHeight / 2 }
-}
-
-function setCzarCursorPosition(x: number, y: number) {
-    const el = czarCursorRef.value
-    if (!el) return
-    gsap.set(el, {
-        x: x + czarCursorHotspot.x,
-        y: y + czarCursorHotspot.y,
-        xPercent: -50,
-        yPercent: -50,
-    })
-    updateCzarHoverAt(x, y)
-}
-
-function smoothCzarCursorPosition(x: number, y: number) {
-    const el = czarCursorRef.value
-    if (!el) return
-    gsap.to(el, {
-        x: x + czarCursorHotspot.x,
-        y: y + czarCursorHotspot.y,
-        duration: 0.14,
-        ease: "power2.out",
-        onUpdate: () => {
-            const cx = Number(gsap.getProperty(el, "x"))
-            const cy = Number(gsap.getProperty(el, "y"))
-            updateCzarHoverAt(cx - czarCursorHotspot.x, cy - czarCursorHotspot.y)
-        },
-    })
-}
-
-function showCzarCursor() {
-    const el = czarCursorRef.value
-    if (!el) return
-    const startPos = getCzarCursorIntroPosition()
-    czarCursorVisible.value = true
-    czarCursorHiding = false
-    gsap.killTweensOf(el)
-    el.classList.remove("czar-cursor--out")
-    gsap.set(el, { x: startPos.x, y: startPos.y, xPercent: -50, yPercent: -50, scale: 0.2, autoAlpha: 0 })
-    gsap.to(el, { scale: 1, autoAlpha: 1, duration: 0.32, ease: "back.out(1.6)" })
-    requestAnimationFrame(() => refreshCzarCursorHotspot())
-    setNativeCursorHidden(isCurrentPlayerCardSelector.value)
-}
-
-function hideCzarCursor(duration = 0.22, unhideNative = false) {
-    const el = czarCursorRef.value
-    if (!el) {
-        czarCursorVisible.value = false
-        clearCzarHover()
-        setNativeCursorHidden(false)
-        return
-    }
-    if (czarCursorHiding) return
-    czarCursorHiding = true
-    if (unhideNative) setNativeCursorHidden(false)
-    gsap.killTweensOf(el)
-    el.classList.add("czar-cursor--out")
-    gsap.to(el, {
-        scale: 0.6,
-        autoAlpha: 0,
-        duration,
-        ease: "power3.in",
-        onComplete: () => {
-            czarCursorVisible.value = false
-            czarCursorHiding = false
-            clearCzarHover()
-            setNativeCursorHidden(false)
-        },
-    })
-}
-
-function setNativeCursorHidden(hidden: boolean) {
-    document.body.classList.toggle("czar-cursor-hide", hidden)
-}
-
-function emitCzarCursorUpdate(pos: { x: number; y: number }, visible = true) {
-    const socket = connection.getSocketSafe()
-    if (!socket) return
-    socket.emit("czar:cursor-update", { lobbyId: lobby.lobbyId, x: pos.x, y: pos.y, visible })
-}
-
-function onCzarPointerMove(e: PointerEvent) {
-    if (!isCzarPhase.value) return
-    if (!isCurrentPlayerCardSelector.value) return
-    const inBounds = isCursorInBounds(e.clientX, e.clientY)
-    const normalized = normalizeCursor(e.clientX, e.clientY)
-    if (!inBounds) {
-        czarCursorPending = null
-        if (!czarCursorHideTimeout) {
-            czarCursorHideTimeout = setTimeout(() => {
-                czarCursorHideTimeout = null
-                if (czarCursorSentVisible) {
-                    czarCursorSentVisible = false
-                    emitCzarCursorUpdate(normalized, false)
-                }
-                if (czarCursorVisible.value) hideCzarCursor(0.22, true)
-            }, CZAR_CURSOR_HIDE_DELAY_MS)
-        }
-        return
-    }
-    if (czarCursorHideTimeout) {
-        clearTimeout(czarCursorHideTimeout)
-        czarCursorHideTimeout = null
-    }
-    czarCursorPending = normalized
-    if (czarCursorRaf) return
-    czarCursorRaf = window.requestAnimationFrame(() => {
-        czarCursorRaf = 0
-        if (!czarCursorPending) return
-        const next = czarCursorPending
-        czarCursorPending = null
-        lastCzarCursor.value = next
-        const pos = denormalizeCursor(next)
-        setCzarCursorPosition(pos.x, pos.y)
-        if (!czarCursorSentVisible) {
-            czarCursorSentVisible = true
-            if (!czarCursorVisible.value) showCzarCursor()
-        }
-        emitCzarCursorUpdate(next, true)
-    })
-}
-
-function startCzarCursorTracking() {
-    if (!isCzarPhase.value) return
-    if (!isCurrentPlayerCardSelector.value) return
-    window.addEventListener("pointermove", onCzarPointerMove, true)
-    window.addEventListener("pointerdown", onCzarPointerMove, true)
-    czarCursorSentVisible = false
-    czarCursorHiding = false
-    if (czarCursorHideTimeout) {
-        clearTimeout(czarCursorHideTimeout)
-        czarCursorHideTimeout = null
-    }
-    setNativeCursorHidden(czarCursorVisible.value)
-}
-
-function stopCzarCursorTracking() {
-    window.removeEventListener("pointermove", onCzarPointerMove, true)
-    window.removeEventListener("pointerdown", onCzarPointerMove, true)
-    if (czarCursorRaf) {
-        window.cancelAnimationFrame(czarCursorRaf)
-        czarCursorRaf = 0
-    }
-    czarCursorPending = null
-    czarCursorSentVisible = false
-    czarCursorHiding = false
-    if (czarCursorHideTimeout) {
-        clearTimeout(czarCursorHideTimeout)
-        czarCursorHideTimeout = null
-    }
-    clearCzarHover()
-    startCzarHoverTyping(null)
-    setNativeCursorHidden(false)
-}
-
-function onWindowResize() {
-    refreshCzarCursorHotspot()
-}
-
-const getCurrentPlayerId = () => lobby.getCurrentPlayer()?.id ?? null
-
-function setPendingState(playerId: string, status: "pending" | "locked" | null) {
-    const next = new Map(pendingCardState.value)
-    if (!status) next.delete(playerId)
-    else next.set(playerId, { status })
-    pendingCardState.value = next
-}
-
-function isCardPending(playerId: string) {
-    const state = pendingCardState.value.get(playerId)
-    return state?.status === "pending"
-}
-
-function isCardLocked(playerId: string) {
-    const state = pendingCardState.value.get(playerId)
-    if (state?.status === "locked") return true
-    return !!lobby.currentRound?.playerSelectedCards?.find(
-        (entry) => entry.playerId === playerId && entry.locked
-    )
-}
-
-function ensurePendingTimerBadge(el: HTMLElement) {
-    let badge = el.querySelector(".card-pending-timer") as HTMLElement | null
-    if (!badge) {
-        badge = document.createElement("div")
-        badge.className = "card-pending-timer"
-        badge.setAttribute("aria-hidden", "true")
-        el.appendChild(badge)
-    }
-    return badge
-}
-
-function removePendingTimerBadge(el: HTMLElement) {
-    const badge = el.querySelector(".card-pending-timer")
-    if (badge) badge.remove()
-}
-
-function updatePendingCountdown(playerId: string) {
-    const expiresAt = pendingCountdownExpiresAt.get(playerId)
-    if (!expiresAt) return
-    const remainingMs = Math.max(0, expiresAt - Date.now())
-    const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000))
-    getPendingCardEls(playerId).forEach((el) => {
-        const badge = ensurePendingTimerBadge(el)
-        badge.textContent = `${remainingSeconds}s`
-    })
-}
-
-function startPendingCountdown(playerId: string, durationMs: number) {
-    const expiresAt = Date.now() + durationMs
-    pendingCountdownExpiresAt.set(playerId, expiresAt)
-    updatePendingCountdown(playerId)
-    const existing = pendingCountdownTimers.get(playerId)
-    if (existing) clearInterval(existing)
-    const timer = window.setInterval(() => updatePendingCountdown(playerId), 250)
-    pendingCountdownTimers.set(playerId, timer)
-}
-
-function stopPendingCountdown(playerId: string) {
-    const timer = pendingCountdownTimers.get(playerId)
-    if (timer) clearInterval(timer)
-    pendingCountdownTimers.delete(playerId)
-    pendingCountdownExpiresAt.delete(playerId)
-    getPendingCardEls(playerId).forEach((el) => removePendingTimerBadge(el))
-}
-
-function startPendingProgress(playerId: string, totalMs: number, remainingMs: number) {
-    const progress = totalMs > 0 ? Math.min(1, Math.max(0, remainingMs / totalMs)) : 0
-    getPendingCardEls(playerId).forEach((el) => {
-        el.style.setProperty("--timer-progress", progress.toFixed(4))
-        const existing = pendingProgressTweens.get(el)
-        if (existing) existing.kill()
-        const tween = gsap.to(el, {
-            "--timer-progress": 0,
-            duration: Math.max(0.05, remainingMs / 1000),
-            ease: "none",
-        })
-        pendingProgressTweens.set(el, tween)
-    })
-}
-
-function stopPendingProgress(playerId: string) {
-    getPendingCardEls(playerId).forEach((el) => {
-        const tween = pendingProgressTweens.get(el)
-        if (tween) tween.kill()
-        pendingProgressTweens.delete(el)
-        el.style.removeProperty("--timer-progress")
-    })
-}
-
-function getPendingCardEls(playerId: string) {
-    const els: HTMLElement[] = []
-    const currentId = getCurrentPlayerId()
-    if (playerId === currentId) {
-        const playCard = playRef.value?.querySelector(".draggable-card") as HTMLElement | null
-        if (playCard) els.push(playCard)
-    }
-    const boardCard = boardGridRef.value?.querySelector(
-        `[data-selected-player-id="${playerId}"]`
-    ) as HTMLElement | null
-    if (boardCard) els.push(boardCard)
-    return els
-}
-
-function applyPendingVisuals(playerId: string, durationMs: number) {
-    const totalMs = pendingCardTotals.get(playerId) ?? durationMs
-    pendingCardTotals.set(playerId, totalMs)
-    getPendingCardEls(playerId).forEach((el) => {
-        el.classList.add("card-pending")
-        updatePendingCountdown(playerId)
-    })
-    startPendingProgress(playerId, totalMs, durationMs)
-}
-
-function pulsePendingCard(playerId: string) {
-    getPendingCardEls(playerId).forEach((el) => {
-        el.classList.remove("card-lock-boost")
-        void el.offsetWidth
-        el.classList.add("card-lock-boost")
-        window.setTimeout(() => {
-            el.classList.remove("card-lock-boost")
-        }, LOCK_BOOST_PULSE_MS)
-    })
-}
-
-function clearPendingVisuals(playerId: string) {
-    const currentId = getCurrentPlayerId()
-    if (currentId && playerId === currentId) {
-        const removeLocalPending = (root: HTMLElement | null) => {
-            if (!root) return
-            root.querySelectorAll(".card-pending").forEach((el) => {
-                el.classList.remove("card-pending")
-                removePendingTimerBadge(el as HTMLElement)
-            })
-        }
-        removeLocalPending(handRef.value)
-        removeLocalPending(playRef.value)
-    }
-    getPendingCardEls(playerId).forEach((el) => {
-        el.classList.remove("card-pending")
-        removePendingTimerBadge(el)
-    })
-    stopPendingProgress(playerId)
-}
-
-function wobbleTable() {
-    if (!boardGridRef.value) return
-    gsap.killTweensOf(boardGridRef.value)
-    gsap.timeline()
-        .to(boardGridRef.value, { rotateZ: 1.2, duration: 0.08, ease: "power2.out" })
-        .to(boardGridRef.value, { rotateZ: -1, duration: 0.12, ease: "power2.inOut" })
-        .to(boardGridRef.value, { rotateZ: 0.7, duration: 0.12, ease: "power2.inOut" })
-        .to(boardGridRef.value, { rotateZ: 0, duration: 0.16, ease: "power2.out" })
-}
-
-function slamSelectedCard(playerId: string) {
-    const els = getPendingCardEls(playerId)
-    const target = els[0]
-    if (!target) return
-
-    gsap.killTweensOf(target)
-    gsap.timeline()
-        .to(target, { scale: 1.08, rotateZ: gsap.utils.random(-4, 4), duration: 0.18, ease: "power2.out" })
-        .to(target, { y: 12, scale: 1.02, rotateZ: gsap.utils.random(-2, 2), duration: 0.15, ease: "power2.in" })
-        .to(target, { y: 0, scale: 1, rotateZ: 0, duration: 0.2, ease: "power2.out" })
-
-    wobbleTable()
-}
-
-function startPendingSelection(playerId: string, durationMs = CARD_LOCK_WINDOW_MS) {
-    if (!playerId) return
-    if (isCardPending(playerId)) return
-    if (isCardLocked(playerId)) return
-    pendingCardTotals.set(playerId, durationMs)
-    refreshPendingSelection(playerId, durationMs)
-}
-
-function refreshPendingSelection(playerId: string, durationMs = CARD_LOCK_WINDOW_MS) {
-    if (!playerId) return
-    if (isCardLocked(playerId)) return
-    const existing = pendingCardTimers.get(playerId)
-    if (existing) clearTimeout(existing)
-
-    setPendingState(playerId, "pending")
-    startPendingCountdown(playerId, durationMs)
-    nextTick(() => applyPendingVisuals(playerId, durationMs))
-
-    const timeout = setTimeout(() => {
-        pendingCardTimers.delete(playerId)
-        stopPendingCountdown(playerId)
-        setPendingState(playerId, "locked")
-        clearPendingVisuals(playerId)
-        nextTick(() => slamSelectedCard(playerId))
-    }, durationMs)
-
-    pendingCardTimers.set(playerId, timeout)
-}
-
-function clearPendingSelection(playerId: string) {
-    const timeout = pendingCardTimers.get(playerId)
-    if (timeout) clearTimeout(timeout)
-    pendingCardTimers.delete(playerId)
-    pendingCardTotals.delete(playerId)
-    stopPendingCountdown(playerId)
-    setPendingState(playerId, null)
-    clearPendingVisuals(playerId)
-}
-
-function resetPendingSelections() {
-    Array.from(pendingCardTimers.values()).forEach((timer) => clearTimeout(timer))
-    pendingCardTimers.clear()
-    pendingCardTotals.clear()
-    pendingCountdownTimers.forEach((timer) => clearInterval(timer))
-    pendingCountdownTimers.clear()
-    pendingCountdownExpiresAt.clear()
-    pendingCardState.value.forEach((_value, key) => clearPendingVisuals(key))
-    pendingCardState.value = new Map()
-}
-
-/* ---------- transitions DRY ---------- */
-const transitionEls = computed(
-    () =>
-        [transitionEl1.value, transitionEl2.value, transitionEl3.value, transitionEl4.value].filter(
-            Boolean
-        ) as HTMLElement[]
-)
-
-/* ---------- timer (fixed czar 17s hidden) ---------- */
-const timerMode = ref<"round" | "czar">("round")
-const timerVisible = ref(true)
-
-const CZAR_TIMER_HIDE_SECONDS = 17
-let timerStartTimeout: ReturnType<typeof setTimeout> | null = null
-
-const timerPhases = new Set(["board", "czar"])
-const shouldShowTimer = computed(() => timerPhases.has(lobby.phase))
-
-function clearTimerTimeout() {
-    if (!timerStartTimeout) return
-    clearTimeout(timerStartTimeout)
-    timerStartTimeout = null
-}
-
-function resetTimer() {
-    timerRef.value?.pause()
-    timerRef.value?.reset(0)
-}
-
-function getRemainingSeconds(expiresAt?: number, durationMs?: number) {
-    const now = Date.now()
-    const remainingMs = expiresAt ? Math.max(0, expiresAt - now) : Math.max(0, durationMs ?? 0)
-    return { now, remainingMs, remainingSeconds: Math.ceil(remainingMs / 1000) }
-}
-
-function setTimerVisibility(show: boolean) {
-    if (!timerWrapRef.value) return
-    if (show === timerVisible.value) return
-    timerVisible.value = show
-
-    gsap.killTweensOf(timerWrapRef.value)
-
-    if (show) {
-        gsap.set(timerWrapRef.value, { pointerEvents: "auto" })
-        gsap.fromTo(
-            timerWrapRef.value,
-            { y: -140, autoAlpha: 0 },
-            { y: 0, autoAlpha: 1, duration: 0.4, ease: "power2.out" }
-        )
-    } else {
-        gsap.to(timerWrapRef.value, {
-            y: -140,
-            autoAlpha: 0,
-            duration: 0.35,
-            ease: "power2.in",
-            onComplete: () => gsap.set(timerWrapRef.value, { pointerEvents: "none" }),
-        })
-    }
-}
-
-function startRoundTimer() {
-    if (!lobby.roundStartedTick) return
-    const { remainingSeconds } = getRemainingSeconds(lobby.roundTimerExpiresAt, lobby.roundTimerDurationMs)
-    if (remainingSeconds <= 0) return
-    timerMode.value = "round"
-    timerRef.value?.start(remainingSeconds)
-}
-
-function startCzarTimer() {
-    if (!lobby.roundStartedTick) return
-    if (lobby.phaseTimerPhase !== "czar") return
-
-    const durationMs = lobby.phaseTimerDurationMs ?? 0
-    const expiresAt = lobby.phaseTimerExpiresAt ?? 0
-    if (!durationMs || !expiresAt) return
-
-    const { now } = getRemainingSeconds(expiresAt, durationMs)
-
-    const startAt = expiresAt - durationMs
-    const showAt = startAt + CZAR_TIMER_HIDE_SECONDS * 1000
-
-    if (now < showAt) {
-        setTimerVisibility(false)
-        resetTimer()
-
-        const delayMs = Math.max(0, showAt - now)
-        timerStartTimeout = setTimeout(() => {
-            timerStartTimeout = null
-            const { remainingSeconds } = getRemainingSeconds(expiresAt, durationMs)
-            if (remainingSeconds <= 0) return
-            timerMode.value = "czar"
-            setTimerVisibility(true)
-            timerRef.value?.start(remainingSeconds)
-        }, delayMs)
-
-        return
-    }
-
-    const { remainingSeconds } = getRemainingSeconds(expiresAt, durationMs)
-    if (remainingSeconds <= 0) return
-    timerMode.value = "czar"
-    setTimerVisibility(true)
-    timerRef.value?.start(remainingSeconds)
-}
-
-function refreshTimer() {
-    clearTimerTimeout()
-    resetTimer()
-
-    if (!shouldShowTimer.value) {
-        setTimerVisibility(false)
-        return
-    }
-
-    if (lobby.phase === "board") {
-        setTimerVisibility(true)
-        startRoundTimer()
-        return
-    }
-
-    if (lobby.phase === "czar") startCzarTimer()
-}
+const {
+    isCardPending,
+    isCardLocked,
+    startPendingSelection,
+    refreshPendingSelection,
+    clearPendingSelection,
+    resetPendingSelections,
+    pulsePendingCard,
+} = usePendingSelections({
+    lobby,
+    handRef,
+    playRef,
+    boardGridRef,
+    getCurrentPlayerId: () => currentPlayerId.value,
+    cardLockWindowMs: CARD_LOCK_WINDOW_MS,
+    lockBoostPulseMs: LOCK_BOOST_PULSE_MS,
+})
 
 /* ---------- board helpers ---------- */
 function syncPlaySlotState() {
@@ -790,165 +115,14 @@ function clearPlaySlot() {
     syncPlaySlotState()
 }
 
-/* ---------- czar flip ---------- */
-const CZAR_FLIP_DELAY_MS = 350
-let czarFlipTimeout: ReturnType<typeof setTimeout> | null = null
-let pendingCzarReveal = false
-let czarRevealRetryTimeout: ReturnType<typeof setTimeout> | null = null
+function onCzarRevealReady(ready: boolean) {
+    czarRevealReady.value = ready
+}
 
-function playCzarFlip() {
-    if (!boardGridRef.value) return
-    const cards = Array.from(boardGridRef.value.querySelectorAll(".card-flip")) as HTMLElement[]
-    if (!cards.length) return
-
-    if (czarRevealReadyTimeout) {
-        clearTimeout(czarRevealReadyTimeout)
-        czarRevealReadyTimeout = null
-    }
+function onCzarRevealStart() {
     czarRevealReady.value = false
-
-    cards.forEach((card, index) => {
-        const back = card.querySelector(".card-flip-back") as HTMLElement | null
-        const front = card.querySelector(".card-flip-front") as HTMLElement | null
-        if (!back || !front) return
-
-        gsap.killTweensOf([card, back, front])
-        gsap.set([back, front], { transformStyle: "preserve-3d", backfaceVisibility: "hidden" })
-        gsap.set(card, { transformStyle: "preserve-3d", rotateX: 0 })
-        gsap.set(back, { rotateY: 0, autoAlpha: 1, zIndex: 2 })
-        gsap.set(front, { rotateY: -180, autoAlpha: 0, zIndex: 1 })
-
-        gsap.timeline({ delay: index * 0.08 })
-            .to(card, { y: -18, rotateX: 10, duration: 0.2, ease: "power2.out" }, 0)
-            .to(back, { rotateY: 180, autoAlpha: 0, duration: 0.45, ease: "power2.inOut" }, 0.05)
-            .to(front, { rotateY: 0, autoAlpha: 1, duration: 0.5, ease: "power2.inOut" }, 0.1)
-            .to(card, { y: 0, rotateX: 0, duration: 0.35, ease: "power2.inOut" }, 0.25)
-    })
-
-    const totalCards = cards.length
-    const lastDelay = (totalCards - 1) * 0.08
-    const totalDuration = lastDelay + 0.25 + 0.35
-    czarRevealReadyTimeout = setTimeout(() => {
-        czarRevealReadyTimeout = null
-        czarRevealReady.value = true
-    }, Math.ceil(totalDuration * 1000))
-}
-
-function scheduleCzarFlip() {
-    if (czarFlipTimeout) clearTimeout(czarFlipTimeout)
-    czarFlipTimeout = setTimeout(() => {
-        czarFlipTimeout = null
-        playCzarFlip()
-    }, CZAR_FLIP_DELAY_MS)
-}
-
-function playCzarShuffle() {
-    if (!boardGridRef.value) return
-    const cards = Array.from(boardGridRef.value.querySelectorAll(".card-flip")) as HTMLElement[]
-    if (!cards.length) return
-
-    const orderedCards = [...cards]
-    gsap.set(orderedCards, { x: 0, y: 0 })
-    orderedCards.sort((a, b) => {
-        const ra = a.getBoundingClientRect()
-        const rb = b.getBoundingClientRect()
-        if (ra.top !== rb.top) return ra.top - rb.top
-        return ra.left - rb.left
-    })
-    const rects = orderedCards.map((card) => card.getBoundingClientRect())
-    const deltas = rects.map((rect, idx) => {
-        const next = rects[(idx + 1) % rects.length]
-        return { x: next.left - rect.left, y: next.top - rect.top }
-    })
-
-    gsap.killTweensOf(orderedCards)
-    const tl = gsap.timeline()
-    const cycles = 2
-    const moveDuration = 0.45
-    const resetDuration = 0.4
-    const stagger = 0.05
-
-    for (let cycle = 0; cycle < cycles; cycle += 1) {
-        orderedCards.forEach((card, idx) => {
-            const delta = deltas[idx]
-            const yNudge = idx % 2 === 0 ? -6 : 6
-            tl.to(
-                card,
-                {
-                    x: delta.x,
-                    y: delta.y + yNudge,
-                    duration: moveDuration,
-                    ease: "power2.inOut",
-                },
-                cycle * (moveDuration + resetDuration) + idx * stagger
-            )
-        })
-        orderedCards.forEach((card, idx) => {
-            const yNudge = idx % 2 === 0 ? 4 : -4
-            tl.to(
-                card,
-                {
-                    x: 0,
-                    y: yNudge,
-                    duration: resetDuration,
-                    ease: "power2.out",
-                },
-                cycle * (moveDuration + resetDuration) + moveDuration + idx * stagger
-            )
-        })
-    }
-    orderedCards.forEach((card, idx) => {
-        tl.to(
-            card,
-            {
-                x: 0,
-                y: 0,
-                duration: 0.3,
-                ease: "power2.out",
-            },
-            cycles * (moveDuration + resetDuration) + idx * 0.02
-        )
-    })
-
-    const targetSeconds = 3
-    const duration = tl.duration()
-    if (duration > 0) {
-        tl.timeScale(duration / targetSeconds)
-    }
-    return tl
-}
-
-function scheduleCzarRevealRetry() {
-    if (czarRevealRetryTimeout) return
-    czarRevealRetryTimeout = setTimeout(() => {
-        czarRevealRetryTimeout = null
-        tryStartCzarReveal()
-    }, 120)
-}
-
-function tryStartCzarReveal() {
-    if (!pendingCzarReveal) return
-    if (!isCzarPhase.value) return
-    czarRevealReady.value = false
-    clearCzarHover()
+    czarCursorComponentRef.value?.clearHover()
     startCzarHoverTyping(null)
-    if (!boardGridRef.value) {
-        scheduleCzarRevealRetry()
-        return
-    }
-    const cards = Array.from(boardGridRef.value.querySelectorAll(".card-flip")) as HTMLElement[]
-    if (!cards.length) {
-        scheduleCzarRevealRetry()
-        return
-    }
-
-    pendingCzarReveal = false
-    const tl = playCzarShuffle()
-    if (tl) {
-        tl.eventCallback("onComplete", () => scheduleCzarFlip())
-    } else {
-        scheduleCzarFlip()
-    }
 }
 
 /* ---------- drag and drop (priming + sortable) ---------- */
@@ -1035,15 +209,17 @@ function onPointerUp() {
 }
 
 function onPointerDown(e: PointerEvent) {
-    if (!isBoardPhase.value) return
-    if (lobby.getCurrentPlayerIsCardSelector()) return
+    if (e.button !== 0 && e.pointerType === "mouse") return
+
+    if (!lobby.canCurrentPlayerPlayCard()) return
+
     const el = (e.target as HTMLElement | null)?.closest?.(".draggable-card") as HTMLElement | null
     if (!el) return
-    const currentId = getCurrentPlayerId()
+    const currentId = currentPlayerId.value
+
     if (currentId && playRef.value?.contains(el) && isUnselectBlocked(currentId)) return
-    if (e.button !== 0 && e.pointerType === "mouse") return
-    if (currentId && playRef.value?.contains(el)) {
-        requestLockBoost(currentId)
+    if (currentId && playRef.value?.contains(el) && isBoardPhase.value && !isCardLocked(currentId)) {
+        lobby.requestLockBoost(currentId)
     }
 
     if (e.pointerType !== "mouse") e.preventDefault()
@@ -1072,38 +248,7 @@ function onPointerDown(e: PointerEvent) {
     window.addEventListener("blur", onPointerUp, true)
 }
 
-function requestLockBoost(playerId: string) {
-    if (!isBoardPhase.value) return
-    if (isCurrentPlayerCardSelector.value) return
-    if (isCardLocked(playerId)) return
-    if (!lobby.lobbyId) return
 
-    const now = Date.now()
-    const lastBoost = lockBoostLastAt.get(playerId) ?? 0
-    if (now - lastBoost < LOCK_BOOST_COOLDOWN_MS) return
-    lockBoostLastAt.set(playerId, now)
-
-    const socket = connection.getSocketSafe()
-    if (!socket) return
-    socket.emit("player:card-lock-boost", { lobbyId: lobby.lobbyId, playerId })
-}
-
-function onPendingCardBoostPointerDown(e: PointerEvent, playerId: string) {
-    if (!playerId) return
-    if (e.button !== 0 && e.pointerType === "mouse") return
-    if (e.pointerType !== "mouse") e.preventDefault()
-    requestLockBoost(playerId)
-}
-
-function getPointerPosition(evt: any) {
-    const clientX = evt?.sensorEvent?.clientX
-    const clientY = evt?.sensorEvent?.clientY
-    if (typeof clientX === "number" && typeof clientY === "number") {
-        lastPointerX = clientX
-        lastPointerY = clientY
-    }
-    return { x: lastPointerX, y: lastPointerY }
-}
 
 function isOverPlaySlot(x: number, y: number) {
     if (!playRef.value) return false
@@ -1115,10 +260,7 @@ function getCardFromEl(el: HTMLElement) {
     const pack = el.dataset.pack
     const cardId = el.dataset.cardId
     if (!pack || !cardId) return null
-    return (
-        lobby.getCurrentPlayerCards().find((c) => c.pack === pack && String(c.card_id) === String(cardId)) ??
-        null
-    )
+    return lobby.getCurrentPlayerWhiteCard(pack, cardId)
 }
 
 function emitCardFromElement(el: HTMLElement, action: "selected" | "unselected") {
@@ -1134,169 +276,8 @@ function isUnselectBlocked(playerId: string | null) {
 }
 
 /* ---------- selected card animation ---------- */
-function getPlayDropPosition() {
-    const gridEl = boardGridRef.value
-    const playEl = playRef.value
-    if (!gridEl || !playEl) return null
-
-    const gridRect = gridEl.getBoundingClientRect()
-    const playRect = playEl.getBoundingClientRect()
-
-    const x = playRect.left - gridRect.left + playRect.width + 24
-    const y = playRect.top - gridRect.top + playRect.height / 2 - 120
-    return { x, y, gridEl }
-}
-
-function spawnSelectedCardAnim(cardText: string, action: "selected" | "unselected", playerId?: string) {
-    const pos = getPlayDropPosition()
-    if (!pos) return
-    const currentId = getCurrentPlayerId()
-    if (action === "unselected" && playerId && currentId && playerId === currentId) return
-
-    if (action === "selected" && playerId) {
-        const target = pos.gridEl.querySelector(`[data-selected-player-id="${playerId}"]`) as HTMLElement | null
-        if (!target) return
-
-        gsap.fromTo(
-            target,
-            { y: -220, rotateZ: gsap.utils.random(-12, 12), rotateX: 55, opacity: 0 },
-            { y: 0, rotateZ: gsap.utils.random(-6, 6), rotateX: 0, opacity: 1, duration: 0.8, ease: "power2.out" }
-        )
-        return
-    }
-
-    if (action === "unselected" && playerId) {
-        const target = pos.gridEl.querySelector(`[data-selected-player-id="${playerId}"]`) as HTMLElement | null
-        if (target) {
-            const rect = target.getBoundingClientRect()
-            const clone = target.cloneNode(true) as HTMLElement
-            Object.assign(clone.style, {
-                position: "fixed",
-                left: `${rect.left}px`,
-                top: `${rect.top}px`,
-                width: `${rect.width}px`,
-                height: `${rect.height}px`,
-                margin: "0",
-                pointerEvents: "none",
-                transformOrigin: "center",
-            })
-            document.body.appendChild(clone)
-            gsap.fromTo(
-                clone,
-                { y: 0, rotateZ: gsap.utils.random(-6, 6), rotateX: 0, opacity: 1 },
-                {
-                    y: -220,
-                    rotateZ: gsap.utils.random(-12, 12),
-                    rotateX: 55,
-                    opacity: 0,
-                    duration: 0.8,
-                    ease: "power2.out",
-                    onComplete: () => clone.remove(),
-                }
-            )
-            return
-        }
-    }
-
-    const el = document.createElement("div")
-    el.className = "madness-card card-back"
-    el.innerHTML = cardText || "..."
-    el.style.position = "absolute"
-    el.style.left = `${pos.x}px`
-    el.style.top = `${pos.y}px`
-    el.style.pointerEvents = "none"
-    el.style.transformStyle = "preserve-3d"
-    pos.gridEl.appendChild(el)
-
-    gsap.fromTo(
-        el,
-        { y: 0, rotateZ: gsap.utils.random(-6, 6), rotateX: 0, opacity: 1 },
-        {
-            y: -220,
-            rotateZ: gsap.utils.random(-12, 12),
-            rotateX: 55,
-            opacity: 0,
-            duration: 0.8,
-            ease: "power2.out",
-            onComplete: () => el.remove(),
-        }
-    )
-}
-
-/* ---------- actions ---------- */
-function onCzarCardSelect(entry: { playerId: string; card: any }) {
-    if (!canCzarSelect.value) return
-    lobby.queueCzarSelectedEntry(entry)
-}
-
-async function onNextRoundClick() {
-    if (!canStartNextRound.value) return
-    const socket = await connection.ensureSocket()
-    socket.emit("round:next", { lobbyId: lobby.lobbyId })
-}
-
-async function onDebugNextPhase() {
-    if (!showDebugPhaseButtons.value) return
-    const socket = await connection.ensureSocket()
-    const phase = lobby.phase
-    const nextMap: Record<string, string> = {
-        lobby: "starting",
-        starting: "intro",
-        intro: "board",
-        board: "czar",
-        czar: "czar-result",
-        "czar-result": "board",
-        results: "lobby",
-    }
-    const nextPhase = nextMap[phase]
-    if (!nextPhase) return
-    socket.emit("room:phase-set", { lobbyId: lobby.lobbyId, phase: nextPhase })
-}
-
-async function onDebugNextRound() {
-    if (!showDebugPhaseButtons.value) return
-    const socket = await connection.ensureSocket()
-    socket.emit("round:next", { lobbyId: lobby.lobbyId })
-}
-
-/* ---------- czar result animations ---------- */
-let blackCardCloneEl: HTMLElement | null = null
-let whiteCardCloneEl: HTMLElement | null = null
-let czarResultOutroTl: gsap.core.Timeline | null = null
 let newBlackCardCloneEl: HTMLElement | null = null
 let blackCardTypingFrame: number | null = null
-const pendingNewBlackCardIntro = ref(false)
-
-const showCzarResultButton = ref(false)
-
-function positionCzarResultPlayer() {
-    const el = czarResultPlayerRef.value
-    if (!el) return
-
-    const target = blackCardCloneEl ?? BlackCardRef.value
-    if (!target) return
-
-    const rect = target.getBoundingClientRect()
-    const top = rect.bottom + 16
-    const left = rect.left + rect.width / 2
-    gsap.set(el, { top, left, xPercent: -50 })
-}
-
-function setBlackCardCloneHtml(html: string) {
-    if (!blackCardCloneEl) return null
-    blackCardCloneEl.innerHTML = ""
-    const wrap = document.createElement("div")
-    wrap.className = "czar-blackcard-text"
-    wrap.innerHTML = html
-    Object.assign(wrap.style, {
-        position: "relative",
-        width: "100%",
-        height: "100%",
-        pointerEvents: "none",
-    })
-    blackCardCloneEl.appendChild(wrap)
-    return wrap
-}
 
 function getAnswerTextFromHtml(html: string) {
     const tmp = document.createElement("div")
@@ -1314,15 +295,14 @@ function clearBlackCardTyping() {
 
 function typeBlackCardAnswerText(targetText: string, durationMs: number) {
     if (!BlackCardRef.value) return
-    if (blackCardCloneEl) return
     if (!czarRevealReady.value) return
     clearBlackCardTyping()
 
-    BlackCardRef.value.innerHTML = blackCardEmptyHtml.value
+    BlackCardRef.value.innerHTML = blackCardTemplateHtml.value
     const answerEl = BlackCardRef.value.querySelector(".card-answer") as HTMLElement | null
     if (!answerEl) return
 
-    const placeholderText = getAnswerTextFromHtml(blackCardEmptyHtml.value)
+    const placeholderText = getAnswerTextFromHtml(blackCardTemplateHtml.value)
     const currentAnswer = answerEl.textContent ?? placeholderText
     const fromText = targetText ? placeholderText : currentAnswer
     const toText = targetText || placeholderText
@@ -1347,48 +327,15 @@ function typeBlackCardAnswerText(targetText: string, durationMs: number) {
     blackCardTypingFrame = requestAnimationFrame(step)
 }
 
-function typeBlackCardAnswer(answerHtml: string, durationMs: number) {
-    clearBlackCardTyping()
-    const wrap = setBlackCardCloneHtml(blackCardEmptyHtml.value)
-    if (!wrap) return
-    const placeholderText = getAnswerTextFromHtml(blackCardEmptyHtml.value)
-    const answerEl = wrap.querySelector(".card-answer") as HTMLElement | null
-    const text = getAnswerTextFromHtml(answerHtml)
-    if (!answerEl) return
-    if (!text) return
-
-    const total = text.length
-    answerEl.textContent = placeholderText
-    const start = performance.now()
-    let lastCount = 0
-
-    const step = (now: number) => {
-        const t = Math.min(1, (now - start) / durationMs)
-        const count = Math.floor(total * t)
-        if (count !== lastCount) {
-            answerEl.textContent = text.slice(0, count)
-            lastCount = count
-        }
-        if (t < 1) {
-            blackCardTypingFrame = requestAnimationFrame(step)
-        } else {
-            blackCardTypingFrame = null
-        }
-    }
-
-    blackCardTypingFrame = requestAnimationFrame(step)
-}
-
 function getHoverAnswerText(playerId: string) {
-    const entry = selectedCards.value.find((item) => item.playerId === playerId)
-    if (!entry) return ""
+    const entry = lobby.getSelectedEntryForPlayerId(playerId)
+    if (!entry?.resolved?.text) return ""
+
     const blackCard = lobby.currentRound?.blackCard
     if (!blackCard) return ""
-    const answerHtml = entry.resolved?.text
-        ?? (entry.card ? resolveWhiteCards([entry.card])[0]?.text : "")
-    if (!answerHtml) return ""
+
     try {
-        const full = resolveBlackCard(blackCard, answerHtml).text
+        const full = resolveBlackCard(blackCard, entry.resolved.text).text
         return getAnswerTextFromHtml(full)
     } catch {
         return ""
@@ -1406,389 +353,6 @@ function startCzarHoverTyping(playerId: string | null) {
     }
     const answerText = getHoverAnswerText(playerId)
     typeBlackCardAnswerText(answerText, CZAR_HOVER_TYPE_MS)
-}
-
-function playCzarResultShine(target: HTMLElement | null) {
-    if (!target) return
-    const textWrap = target.querySelector(".czar-blackcard-text") as HTMLElement | null
-    if (!textWrap) return
-    const overlay = document.createElement("div")
-    overlay.innerHTML = textWrap.innerHTML
-    Object.assign(overlay.style, {
-        position: "absolute",
-        inset: "0",
-        color: "transparent",
-        background:
-            "linear-gradient(120deg, rgba(255,255,255,0) 0%, rgba(255,255,255,1) 45%, rgba(255,255,255,0) 80%)",
-        backgroundSize: "200% 100%",
-        backgroundPosition: "0% 50%",
-        WebkitBackgroundClip: "text",
-        backgroundClip: "text",
-        WebkitTextFillColor: "transparent",
-        pointerEvents: "none",
-        mixBlendMode: "screen",
-        opacity: "0",
-    })
-    textWrap.appendChild(overlay)
-    gsap.fromTo(
-        overlay,
-        { backgroundPosition: "-140% 50%", opacity: 0 },
-        {
-            duration: 1.3,
-            ease: "power2.inOut",
-            keyframes: [
-                { backgroundPosition: "-140% 50%", opacity: 0 },
-                { backgroundPosition: "120% 50%", opacity: 1 },
-                { backgroundPosition: "240% 50%", opacity: 0 },
-            ],
-            onComplete: () => overlay.remove(),
-        }
-    )
-}
-
-function resetCzarResultAnimation() {
-    czarResultOutroTl?.kill()
-    czarResultOutroTl = null
-    clearBlackCardTyping()
-
-    if (BlackCardRef.value) gsap.set(BlackCardRef.value, { clearProps: "all", autoAlpha: 1 })
-    if (BlackCardGhostRef.value) gsap.set(BlackCardGhostRef.value, { clearProps: "all", opacity: 0 })
-
-    if (blackCardCloneEl) {
-        blackCardCloneEl.remove()
-        blackCardCloneEl = null
-    }
-    if (whiteCardCloneEl) {
-        whiteCardCloneEl.remove()
-        whiteCardCloneEl = null
-    }
-    if (newBlackCardCloneEl) {
-        newBlackCardCloneEl.remove()
-        newBlackCardCloneEl = null
-    }
-
-    if (transitionEls.value.length) gsap.set(transitionEls.value, { clearProps: "all" })
-    if (czarResultPlayerRef.value) gsap.set(czarResultPlayerRef.value, { clearProps: "all" })
-
-    showCzarResultButton.value = false
-    pendingNewBlackCardIntro.value = false
-    useEmptyBlackCard.value = false
-}
-
-async function startCzarResultAnimation() {
-    useEmptyBlackCard.value = true
-    await nextTick()
-
-    const card = BlackCardRef.value
-    const ghost = BlackCardGhostRef.value
-    if (!card || !ghost) return
-
-    czarResultOutroTl?.kill()
-    czarResultOutroTl = null
-    pendingNewBlackCardIntro.value = false
-
-    gsap.set(ghost, { opacity: 0 })
-
-    const rect = card.getBoundingClientRect()
-    blackCardCloneEl = card.cloneNode(true) as HTMLElement
-    setBlackCardCloneHtml(blackCardEmptyHtml.value)
-    Object.assign(blackCardCloneEl.style, {
-        position: "fixed",
-        left: `${rect.left}px`,
-        top: `${rect.top}px`,
-        width: `${rect.width}px`,
-        height: `${rect.height}px`,
-        margin: "0",
-        zIndex: "80",
-        transformOrigin: "center",
-        pointerEvents: "none",
-        overflow: "hidden",
-        display: "block",
-        visibility: "visible",
-        opacity: "1",
-    })
-    blackCardCloneEl.classList.add("czar-blackcard-clone")
-    document.body.appendChild(blackCardCloneEl)
-    gsap.set(blackCardCloneEl, { autoAlpha: 1 })
-
-    const selectedId = selectedCzarCardPlayerId.value
-    const selectedFront = selectedId
-        ? (boardGridRef.value?.querySelector(
-            `[data-selected-player-id="${selectedId}"] .card-flip-front`
-        ) as HTMLElement | null)
-        : null
-    if (whiteCardCloneEl) {
-        whiteCardCloneEl.remove()
-        whiteCardCloneEl = null
-    }
-    if (selectedFront) {
-        const startLeft = window.innerWidth + rect.width * 0.4
-        const startTop = rect.top
-        whiteCardCloneEl = document.createElement("div")
-        whiteCardCloneEl.className = "card-flip czar-whitecard-clone"
-        whiteCardCloneEl.innerHTML = `
-            <div class="madness-card card-white card-back card-flip-back" aria-hidden="true"></div>
-            <div class="madness-card card-white card-flip-front">${selectedFront.innerHTML}</div>
-        `
-        Object.assign(whiteCardCloneEl.style, {
-            position: "fixed",
-            left: `${startLeft}px`,
-            top: `${startTop}px`,
-            width: `${rect.width}px`,
-            height: `${rect.height}px`,
-            margin: "0",
-            zIndex: "59",
-            transformOrigin: "center",
-            pointerEvents: "none",
-        })
-        whiteCardCloneEl.classList.add("czar-whitecard-clone")
-        document.body.appendChild(whiteCardCloneEl)
-
-        whiteCardCloneEl.querySelectorAll(".madness-card").forEach((el) => {
-            const cardEl = el as HTMLElement
-            cardEl.style.width = "100%"
-            cardEl.style.height = "100%"
-        })
-    }
-
-    gsap.set(card, { autoAlpha: 0, pointerEvents: "none" })
-
-    CustomEase.create("cardBounce", "0.18,1.4,0.35,1")
-    audioStore.playWrapCzarOnce()
-
-    const tl = gsap.timeline()
-    const scaleUp = Math.max(1.1, Math.min(1.45, Math.min(window.innerWidth / 950, window.innerHeight / 760)))
-    const settleScale = Math.max(1.05, scaleUp - 0.2)
-
-    // circles DRY
-    transitionEls.value.forEach((el, idx) => {
-        tl.fromTo(
-            el,
-            { scale: 0 },
-            { scale: 1.3, duration: 3, ease: "readyBounce" },
-            0 + [0, 0.3, 0.4, 0.5][idx]
-        )
-    })
-
-    const hasWhiteCard = Boolean(whiteCardCloneEl)
-    const gap = Math.round(rect.width * 0.12)
-    const offset = hasWhiteCard ? Math.round(rect.width / 2 + gap / 2) : 0
-
-    gsap.set(blackCardCloneEl, {
-        transformPerspective: 1200,
-        transformStyle: "preserve-3d",
-        backfaceVisibility: "hidden",
-    })
-    if (whiteCardCloneEl) {
-        gsap.set(whiteCardCloneEl, { transformPerspective: 1200, transformStyle: "preserve-3d" })
-        const whiteBack = whiteCardCloneEl.querySelector(".card-flip-back") as HTMLElement | null
-        const whiteFront = whiteCardCloneEl.querySelector(".card-flip-front") as HTMLElement | null
-        if (whiteBack && whiteFront) {
-            gsap.set([whiteBack, whiteFront], { transformStyle: "preserve-3d", backfaceVisibility: "hidden" })
-            gsap.set(whiteBack, { rotateY: 180, autoAlpha: 1, zIndex: 1 })
-            gsap.set(whiteFront, { rotateY: 0, autoAlpha: 1, zIndex: 2 })
-        }
-    }
-
-    tl.to(
-        blackCardCloneEl,
-        {
-            left: "50%",
-            top: "50%",
-            xPercent: -50,
-            yPercent: -50,
-            x: -offset,
-            rotate: gsap.utils.random(-5, 5),
-            scale: scaleUp,
-            duration: 1,
-            ease: "power3.inOut",
-        },
-        1
-    )
-
-    if (hasWhiteCard && whiteCardCloneEl) {
-        tl.to(
-            whiteCardCloneEl,
-            {
-                left: "50%",
-                top: "50%",
-                xPercent: -50,
-                yPercent: -50,
-                x: offset,
-                rotate: gsap.utils.random(-5, 5),
-                scale: scaleUp,
-                width: rect.width,
-                height: rect.height,
-                duration: 1,
-                ease: "power3.inOut",
-            },
-            1
-        )
-    }
-
-    tl.to(
-        blackCardCloneEl,
-        { scale: settleScale, rotate: gsap.utils.random(-4, 4), duration: 0.6, ease: "readyBounce" },
-        2
-    )
-    if (hasWhiteCard && whiteCardCloneEl) {
-        tl.to(
-            whiteCardCloneEl,
-            { scale: settleScale, rotate: gsap.utils.random(-4, 4), duration: 0.6, ease: "readyBounce" },
-            2
-        )
-    }
-
-    const spinStart = 3.05
-    const spinDuration = 4
-    const spinEnd = spinStart + spinDuration
-    const typeDurationMs = 3000
-    const spinSwapAt = spinStart + typeDurationMs / 1000
-    const spinEase = "power3.inOut"
-
-    if (hasWhiteCard && whiteCardCloneEl) {
-        tl.to(
-            blackCardCloneEl,
-            {
-                x: 0,
-                z: 8,
-                rotate: gsap.utils.random(-3, 3),
-                duration: 0.4,
-                ease: "power2.inOut",
-            },
-            2.6
-        )
-            .to(
-                whiteCardCloneEl,
-                {
-                    x: 0,
-                    z: -8,
-                    rotate: gsap.utils.random(-3, 3),
-                    duration: 0.4,
-                    ease: "power2.inOut",
-                },
-                2.6
-            )
-            .to(
-                [blackCardCloneEl, whiteCardCloneEl],
-                { rotateY: 1800, duration: spinDuration, ease: spinEase },
-                spinStart
-            )
-            .to(
-                [blackCardCloneEl, whiteCardCloneEl],
-                { y: -60, duration: spinDuration, ease: "sine.out" },
-                spinStart
-            )
-            .call(() => {
-                typeBlackCardAnswer(blackCardHtml.value, typeDurationMs)
-            }, [], spinStart + 1)
-            .call(
-                () => {
-                    clearBlackCardTyping()
-                    setBlackCardCloneHtml(blackCardHtml.value)
-                },
-                [],
-                spinSwapAt
-            )
-            .call(
-                () => {
-                    if (whiteCardCloneEl) gsap.set(whiteCardCloneEl, { autoAlpha: 0 })
-                },
-                [],
-                spinEnd + 0.05
-            )
-            .to(
-                blackCardCloneEl,
-                { y: 0, duration: 0.35, ease: "power4.in" },
-                spinEnd + 0.15
-            )
-            .call(() => playCzarResultShine(blackCardCloneEl), [], spinEnd + 0.55)
-    } else {
-        tl.to(
-            blackCardCloneEl,
-            { rotateY: 1800, duration: spinDuration, ease: spinEase },
-            spinStart
-        )
-            .to(
-                blackCardCloneEl,
-                { y: -60, duration: spinDuration, ease: "sine.out" },
-                spinStart
-            )
-            .call(() => {
-                typeBlackCardAnswer(blackCardHtml.value, typeDurationMs)
-            }, [], spinStart + 1)
-            .call(() => {
-                clearBlackCardTyping()
-                setBlackCardCloneHtml(blackCardHtml.value)
-            }, [], spinSwapAt)
-            .to(
-                blackCardCloneEl,
-                { y: 0, duration: 0.35, ease: "power4.in" },
-                spinEnd + 0.15
-            )
-            .call(() => playCzarResultShine(blackCardCloneEl), [], spinEnd + 0.55)
-    }
-
-    tl.call(() => positionCzarResultPlayer(), [], spinEnd + 0.6)
-        .fromTo(
-            czarResultPlayerRef.value,
-            { y: 60, autoAlpha: 0 },
-            { y: 0, autoAlpha: 1, duration: 0.5, ease: "power2.out", delay: 0.2 },
-            spinEnd + 0.65
-        )
-        .call(() => {
-            showCzarResultButton.value = true
-        }, [], spinEnd + 0.65)
-        .fromTo(
-            czarNextRoundButton.value,
-            { y: 60, autoAlpha: 0 },
-            { y: 0, autoAlpha: 1, duration: 0.5, ease: "power2.out", delay: 0.2 },
-            spinEnd + 2.35
-        )
-}
-
-function startCzarResultOutroAnimation() {
-    const ghost = BlackCardGhostRef.value
-    const original = BlackCardRef.value
-    if (!ghost || !original) {
-        resetCzarResultAnimation()
-        return
-    }
-
-    czarResultOutroTl?.kill()
-    czarResultOutroTl = gsap.timeline({
-        onComplete: () => {
-            resetCzarResultAnimation()
-            if (pendingNewBlackCardIntro.value) {
-                pendingNewBlackCardIntro.value = false
-                nextTick(() => animateNextBlackCardIn())
-            }
-        },
-    })
-
-    if (czarResultPlayerRef.value) czarResultOutroTl.to(czarResultPlayerRef.value, { y: 20, autoAlpha: 0, duration: 0.25, ease: "power2.in" }, 0)
-    if (czarNextRoundButton.value) czarResultOutroTl.to(czarNextRoundButton.value, { y: 20, autoAlpha: 0, duration: 0.25, ease: "power2.in" }, 0)
-
-    if (transitionEls.value.length) {
-        czarResultOutroTl.to(transitionEls.value, { scale: 0, duration: 0.6, ease: "power2.inOut", stagger: 0.05 }, 0)
-    }
-
-    if (!blackCardCloneEl) {
-        resetCzarResultAnimation()
-        return
-    }
-
-    czarResultOutroTl.to(
-        blackCardCloneEl,
-        {
-            y: -window.innerHeight * 0.9,
-            rotate: gsap.utils.random(-12, 12),
-            scale: 0.9,
-            duration: 0.6,
-            ease: "power2.in",
-        },
-        0
-    )
 }
 
 function animateNextBlackCardIn() {
@@ -1841,186 +405,82 @@ function animateNextBlackCardIn() {
         })
 }
 
-/* ---------- expose ---------- */
-const runIntroAnimation = () => { }
+/* ---------- watchers ---------- */
+function handleRoundStarted(tick: number) {
+    if (!tick) return
+    if (!playRef.value) return
+    playRef.value.querySelectorAll(".draggable-card").forEach((el) => el.remove())
+    syncPlaySlotState()
+    resetPendingSelections()
+    resetDragState()
+    if (lobby.phase === "board") nextTick(() => animateNextBlackCardIn())
+}
 
-/* ---------- watchers (DRY) ---------- */
-watch(
-    () => shouldShowTimer.value,
-    (show) => setTimerVisibility(show),
-    { immediate: true }
-)
+function handlePhaseChange(phase: string, prev: string) {
+    if (phase === prev) return
 
-watch(
-    () => [
-        lobby.phase,
-        lobby.roundStartedTick,
-        lobby.roundTimerExpiresAt,
-        lobby.roundTimerDurationMs,
-        lobby.phaseTimerPhase,
-        lobby.phaseTimerExpiresAt,
-        lobby.phaseTimerDurationMs,
-    ],
-    () => refreshTimer(),
-    { immediate: true }
-)
+    if (phase !== "board") resetPendingSelections()
 
-watch(
-    () => lobby.roundStartedTick,
-    (tick) => {
-        if (!tick) return
-        if (!playRef.value) return
-        playRef.value.querySelectorAll(".draggable-card").forEach((el) => el.remove())
-        syncPlaySlotState()
-        resetPendingSelections()
-        resetDragState()
-        if (lobby.phase === "board") {
-            if (czarResultOutroTl?.isActive()) {
-                pendingNewBlackCardIntro.value = true
-                return
-            }
-            pendingNewBlackCardIntro.value = false
-            nextTick(() => animateNextBlackCardIn())
+    if (phase === "czar") {
+        czarRevealReady.value = false
+    } else {
+        czarCursorComponentRef.value?.clearHover()
+        startCzarHoverTyping(null)
+    }
+
+    if (phase === "czar" && lobby.roundStartedTick > 0) {
+        audioStore.playWrapOnce()
+        clearPlaySlot()
+    }
+}
+
+function handleSelectedCardAnim(tick: number) {
+    if (!tick) return
+    const action = (lobby.lastSelectedCard?.action ?? "selected") as "selected" | "unselected"
+    const playerId = lobby.lastSelectedCard?.playerId
+    const isSync = !!lobby.lastSelectedCard?.sync
+    if (playerId) {
+        if (action === "selected" && lobby.phase === "board") {
+            const durationMs = lobby.selectionLockDurationMs || CARD_LOCK_WINDOW_MS
+            const expiresAt = lobby.selectionLockExpiresAt
+            const remainingMs = expiresAt ? Math.max(0, expiresAt - Date.now()) : durationMs
+            startPendingSelection(playerId, remainingMs)
         }
+        if (action === "unselected") clearPendingSelection(playerId)
     }
-)
+    if (isSync) return
+}
 
-watch(
-    () => selectedCards.value.length,
-    () => {
-        if (!isCzarPhase.value) return
-        nextTick(() => tryStartCzarReveal())
+function handleSelectionLockBoost(tick: number) {
+    if (!tick) return
+    const payload = lobby.lastSelectionLockBoost
+    if (!payload?.playerId) return
+    if (isCardLocked(payload.playerId)) return
+    const remainingMs = payload.selectionLockExpiresAt
+        ? Math.max(0, payload.selectionLockExpiresAt - Date.now())
+        : Math.max(0, payload.selectionLockDurationMs ?? 0)
+    if (remainingMs <= 0) return
+    refreshPendingSelection(payload.playerId, remainingMs)
+    nextTick(() => pulsePendingCard(payload.playerId))
+}
+
+function getPointerPosition(evt: any) {
+    const clientX = evt?.sensorEvent?.clientX
+    const clientY = evt?.sensorEvent?.clientY
+    if (typeof clientX === "number" && typeof clientY === "number") {
+        lastPointerX = clientX
+        lastPointerY = clientY
     }
-)
+    return { x: lastPointerX, y: lastPointerY }
+}
 
-watch(
-    () => lobby.phase,
-    (phase, prev) => {
-        if (phase === prev) return
+watch(() => lobby.roundStartedTick, handleRoundStarted)
+watch(() => lobby.phase, handlePhaseChange)
+watch(() => lobby.selectedCardAnimTick, handleSelectedCardAnim)
+watch(() => lobby.selectionLockBoostTick, handleSelectionLockBoost)
 
-        if (phase !== "board") resetPendingSelections()
-
-        if (phase === "czar") {
-            showCzarCursor()
-            startCzarCursorTracking()
-            czarRevealReady.value = false
-        } else {
-            stopCzarCursorTracking()
-            hideCzarCursor()
-            clearCzarHover()
-            startCzarHoverTyping(null)
-        }
-
-        switch (phase) {
-            case "czar":
-                if (lobby.roundStartedTick > 0) {
-                    audioStore.playWrapOnce()
-                    clearPlaySlot()
-                    pendingCzarReveal = true
-                    nextTick(() => tryStartCzarReveal())
-                }
-                break
-
-            case "czar-result":
-                resetTimer()
-                startCzarResultAnimation()
-                break
-
-            default:
-                if (prev === "czar-result" && phase === "board") {
-                    startCzarResultOutroAnimation()
-                } else {
-                    resetCzarResultAnimation()
-                }
-                break
-        }
-    }
-)
-
-watch(
-    () => lobby.selectedCardAnimTick,
-    (tick) => {
-        if (!tick) return
-        const cardText = lobby.lastSelectedCard?.card?.text ?? ""
-        const action = (lobby.lastSelectedCard?.action ?? "selected") as "selected" | "unselected"
-        const playerId = lobby.lastSelectedCard?.playerId
-        const isSync = !!lobby.lastSelectedCard?.sync
-        if (playerId) {
-            if (action === "selected" && lobby.phase === "board") {
-                const durationMs = lobby.selectionLockDurationMs || CARD_LOCK_WINDOW_MS
-                const expiresAt = lobby.selectionLockExpiresAt
-                const remainingMs = expiresAt ? Math.max(0, expiresAt - Date.now()) : durationMs
-                startPendingSelection(playerId, remainingMs)
-            }
-            if (action === "unselected") clearPendingSelection(playerId)
-        }
-        if (isSync) return
-        if (action === "selected") nextTick(() => spawnSelectedCardAnim(cardText, action, playerId))
-        else spawnSelectedCardAnim(cardText, action, playerId)
-    }
-)
-
-watch(
-    () => lobby.selectionLockBoostTick,
-    (tick) => {
-        if (!tick) return
-        const payload = lobby.lastSelectionLockBoost
-        if (!payload?.playerId) return
-        if (isCardLocked(payload.playerId)) return
-        const remainingMs = payload.selectionLockExpiresAt
-            ? Math.max(0, payload.selectionLockExpiresAt - Date.now())
-            : Math.max(0, payload.selectionLockDurationMs ?? 0)
-        if (remainingMs <= 0) return
-        refreshPendingSelection(payload.playerId, remainingMs)
-        nextTick(() => pulsePendingCard(payload.playerId))
-    }
-)
-
-watch(
-    () => lobby.czarCursorTick,
-    (tick) => {
-        if (!tick) return
-        const payload = lobby.czarCursor
-        if (!payload) return
-        if (isCurrentPlayerCardSelector.value) return
-        if (payload.visible === false) {
-            if (czarCursorVisible.value) hideCzarCursor()
-            return
-        }
-        lastCzarCursor.value = { x: payload.x, y: payload.y }
-        if (!isCzarPhase.value) return
-        if (!czarCursorVisible.value) showCzarCursor()
-        const pos = denormalizeCursor(payload)
-        if (isCurrentPlayerCardSelector.value) setCzarCursorPosition(pos.x, pos.y)
-        else smoothCzarCursorPosition(pos.x, pos.y)
-    }
-)
-
-watch(
-    () => [isCzarPhase.value, isCurrentPlayerCardSelector.value],
-    ([isCzar, isSelector]) => {
-        if (isCzar && isSelector) startCzarCursorTracking()
-        else stopCzarCursorTracking()
-        if (czarCursorVisible.value) setNativeCursorHidden(isCzar && isSelector)
-    }
-)
 
 /* ---------- mount/unmount ---------- */
-onMounted(() => {
-    if (timerWrapRef.value && !shouldShowTimer.value) {
-        setTimerVisibility(false)
-        timerVisible.value = false
-    }
-})
-
-onMounted(() => {
-    if (isCzarPhase.value) {
-        showCzarCursor()
-        startCzarCursorTracking()
-    }
-    window.addEventListener("resize", onWindowResize)
-})
-
 onMounted(() => {
     if (!handRef.value || !playRef.value) return
 
@@ -2034,16 +494,11 @@ onMounted(() => {
     })
 
     sortable.on("drag:start", (evt: any) => {
-        if (!isBoardPhase.value || lobby.getCurrentPlayerIsCardSelector()) {
-            evt.cancel()
-            return
-        }
-        if (isWaitingForRound.value) {
-            evt.cancel()
-            return
+        if (!lobby.canCurrentPlayerPlayCard()) {
+            evt.cancel(); return
         }
 
-        const currentId = getCurrentPlayerId()
+        const currentId = currentPlayerId.value
         if (currentId && isUnselectBlocked(currentId)) {
             evt.cancel()
             return
@@ -2092,10 +547,11 @@ onMounted(() => {
 
     sortable.on("drag:stop", (evt: any) => {
         if (playRef.value && handRef.value && drag.source) {
+
             const { x, y } = getPointerPosition(evt)
             const overPlay = isOverPlaySlot(x, y)
             const wasInPlay = drag.startInPlay
-            const currentId = getCurrentPlayerId()
+            const currentId = currentPlayerId.value
             const unselectBlocked = currentId ? isUnselectBlocked(currentId) : false
             const shouldUnselect = wasInPlay && !overPlay && !unselectBlocked
 
@@ -2145,44 +601,16 @@ onBeforeUnmount(() => {
     handRef.value?.removeEventListener("pointerdown", onPointerDown, true)
     playRef.value?.removeEventListener("pointerdown", onPointerDown, true)
 
-    clearTimerTimeout()
-    stopCzarCursorTracking()
-    hideCzarCursor()
 
-    if (czarFlipTimeout) {
-        clearTimeout(czarFlipTimeout)
-        czarFlipTimeout = null
-    }
-    if (czarRevealReadyTimeout) {
-        clearTimeout(czarRevealReadyTimeout)
-        czarRevealReadyTimeout = null
-    }
-    if (czarRevealRetryTimeout) {
-        clearTimeout(czarRevealRetryTimeout)
-        czarRevealRetryTimeout = null
-    }
-
-    resetCzarResultAnimation()
     resetDragState()
     resetPendingSelections()
-    window.removeEventListener("resize", onWindowResize)
 })
 
-defineExpose({ runIntroAnimation })
 </script>
 
 <template>
     <div class="flex justify-center items-center">
-        <div ref="transitionEl1" class="fixed aspect-square scale-0 translate-[-50%,-50%] bg-pink-300/70 z-10 w-screen rounded-full"></div>
-        <div ref="transitionEl2" class="fixed aspect-square scale-0 translate-[-50%,-50%] bg-green-300/70 z-10 w-screen rounded-full"></div>
-        <div ref="transitionEl3" class="fixed aspect-square scale-0 translate-[-50%,-50%] bg-blue-300/70 z-10 w-screen rounded-full"></div>
-        <div ref="transitionEl4" class="fixed aspect-square scale-0 translate-[-50%,-50%] bg-purple-800 z-10 w-screen rounded-full"></div>
-        <div v-show="czarCursorVisible" ref="czarCursorRef" class="czar-cursor">
-            <span class="czar-cursor__pulse czar-cursor__pulse--one"></span>
-            <span class="czar-cursor__pulse czar-cursor__pulse--two"></span>
-            <div class="czar-cursor__pointer"></div>
-            <div class="czar-cursor__tag">CZAR</div>
-        </div>
+        <CzarCursor ref="czarCursorComponentRef" :board-area-ref="boardAreaRef" :board-grid-ref="boardGridRef" :black-card-ref="BlackCardRef" :czar-reveal-ready="czarRevealReady" @hover-change="startCzarHoverTyping" />
 
         <div>
             <!-- timer -->
@@ -2191,56 +619,25 @@ defineExpose({ runIntroAnimation })
                     <img class="" width="150" src="../../../assets/images/logo.png" alt="" />
                 </div>
 
-                <div ref="timerWrapRef" class="bg-[#2b0246] px-16 py-4 rounded-b-4xl border-2 border-black border-t-0">
-                    <CountdownTimer ref="timerRef" :initial-seconds="240" :auto-start="false" :mode="timerMode" />
-                </div>
+                <BoardTimer :phase="lobby.phase" :round-started-tick="lobby.roundStartedTick" :round-timer-expires-at="lobby.roundTimerExpiresAt" :round-timer-duration-ms="lobby.roundTimerDurationMs" :phase-timer-phase="lobby.phaseTimerPhase" :phase-timer-expires-at="lobby.phaseTimerExpiresAt" :phase-timer-duration-ms="lobby.phaseTimerDurationMs" />
 
                 <div class="p-4 flex-1 flex items-center justify-end gap-4">
                     <BaseButton size="md" color="pink" @click="ui.openSettings" icon="Cog"></BaseButton>
-                    <BaseButton size="md" color="pink" icon="Logout"></BaseButton>
+                    <BaseButton size="md" color="pink" icon="Logout" @click="lobby.confirmLeaveLobby"></BaseButton>
                 </div>
             </div>
 
-            <!-- players -->
-            <div class="absolute left-0 top-[50%] translate-y-[-50%] flex gap-2">
-                <div class="bg-white border-4 border-b-8 border-l-0 rounded-xl rounded-l-none border-black p-2 text-black">
-                    <ul class="space-y-2">
-                        <li v-for="player in lobby.players" :key="player.id" class="group flex justify-between items-center gap-4 text-black text-xl font-bold p-2 rounded-xl even:bg-gray-100">
-                            <div class="flex items-center gap-4">
-                                <div class="inline-block flex-1 w-4 h-4 border-3 border-white outline-2 outline-black bg-green-500 rounded-full"></div>
-                                <div>{{ player.name }}</div>
-                            </div>
-
-                            <div class="flex items-center gap-3">
-                                <button
-                                    v-if="canKickPlayer(player.id)"
-                                    type="button"
-                                    class="flex items-center justify-center w-7 h-7 hover:bg-gray-200 rounded-lg"
-                                    @click.stop="kickPlayer(player.id)"
-                                >
-                                    <Close />
-                                </button>
-                                <div v-if="lobby.isPlayerCardSelector(player.id)" class="text-xs font-bold px-2 py-1 rounded-full bg-yellow-300 text-black border-2 border-b-4 border-black">
-                                    Card Czar
-                                </div>
-                            </div>
-                        </li>
-                    </ul>
-                </div>
-            </div>
+            <PlayerList />
 
             <div ref="boardAreaRef" class="flex items-center">
                 <div class="pr-10 bg-white border-2 border-b-5 rounded-xl border-black p-6 text-black">
                     <div class="relative">
-                        <div ref="BlackCardGhostRef" class="madness-card card-black card-anim invisible pointer-events-none select-none" v-html="blackCardDisplayHtml"></div>
-                        <div class="absolute inset-0">
-                            <div ref="BlackCardRef" class="madness-card card-black card-anim" v-html="blackCardDisplayHtml"></div>
-                        </div>
+                        <div ref="BlackCardRef" class="madness-card card-black card-anim" v-html="blackCardHtml"></div>
                     </div>
                 </div>
 
                 <div ref="boardGridRef" class="-ml-6 bg-[#2b0246] grid grid-cols-5 gap-8 w-3xl border-4 backdrop-blur-sm rounded-xl border-black p-6 transition-all" style="position: relative; perspective: 1200px">
-                    <div v-show="isRoundActive && !isCurrentPlayerCardSelector && !isWaitingForRound" class="play-zone">
+                    <div v-show="isRoundActive && !isCurrentPlayerCzar && !isWaitingForRound" class="play-zone">
                         <div ref="playRef" class="play-slot">
                             <div class="madness-card card-white card-responsive play-slot-mirror" aria-hidden="true"></div>
                             <div class="play-placeholder border-3 border-dashed border-white/60 rounded-xl text-white/70 px-6 py-8 text-center text-sm">
@@ -2249,61 +646,19 @@ defineExpose({ runIntroAnimation })
                         </div>
                     </div>
 
-                    <div v-for="entry in selectedCards" :key="entry.playerId" class="card-flip card-responsive" :class="{
-                        'card-selectable': canCzarSelect,
-                        'card-selected': selectedCzarCardPlayerId === entry.playerId,
-                    }" :data-selected-player-id="entry.playerId" @click="onCzarCardSelect(entry)" @pointerdown="onPendingCardBoostPointerDown($event, entry.playerId)">
-                        <div class="card-flip-inner">
-                            <div class="madness-card card-white card-responsive card-back card-flip-back" aria-hidden="true"></div>
-                            <div class="madness-card card-white card-responsive card-flip-front" v-html="isRevealPhase ? entry.resolved?.text : ''"></div>
-                        </div>
-                    </div>
+                    <SelectedCardsGrid :is-card-locked="isCardLocked" :play-ref="playRef" :board-grid-ref="boardGridRef" @reveal-ready="onCzarRevealReady" @reveal-start="onCzarRevealStart" />
                 </div>
             </div>
 
             <div class="absolute bottom-0 left-0 right-0 flex justify-center">
-                <div v-show="isRoundActive" ref="handRef" class="hand-deck z-10 relative" :class="{ 'hand-deck--active': isRoundActive, 'hand-deck--czar': isCurrentPlayerCardSelector }">
+                <div v-show="isRoundActive" ref="handRef" class="hand-deck z-10 relative" :class="{ 'hand-deck--active': isRoundActive, 'hand-deck--czar': isCurrentPlayerCzar }">
                     <div v-for="(white_card, index) in currentPlayerCards" :key="`${white_card.pack}-${white_card.card_id}-${index}`" class="madness-card card-white card-sm draggable-card" :data-pack="white_card.pack" :data-card-id="white_card.card_id" v-html="white_card.text"></div>
 
-                    <div v-if="isCurrentPlayerCardSelector" class="hand-czar-banner">Jij bent de Card Czar</div>
+                    <div v-if="isCurrentPlayerCzar" class="hand-czar-banner">Jij bent de Card Czar</div>
                     <div v-if="isWaitingForRound" class="hand-czar-banner">Je doet mee vanaf de volgende ronde</div>
                 </div>
             </div>
 
-            <div v-show="isCzarResultPhase" ref="czarResultPlayerRef" class="fixed opacity-0 z-20 pointer-events-none">
-                <div class="text-2xl flex items-center gap-3 font-bold text-white">
-                    <template v-if="selectedCzarPlayer?.id === lobby.getCurrentPlayer()?.id">
-                        <span>czar</span>
-                        <div class="flex gap-2 bg-white border-3 text-lg border-purple-950 border-b-6 px-3 py-2 rounded-xl text-purple-950 font-black">
-                            <PersonIcon />
-                            {{ lobby.getCurrentCardSelector()?.name ?? "A player" }}
-                        </div>
-                        koos jou kaart!
-                    </template>
-
-                    <template v-else>
-                        <span>czar</span>
-                        <div class="flex gap-2 bg-white border-3 text-lg border-purple-950 border-b-6 px-3 py-2 rounded-xl text-purple-950 font-black">
-                            <PersonIcon />
-                            {{ lobby.getCurrentCardSelector()?.name ?? "A player" }}
-                        </div>
-                        koos de kaart van
-                        <div class="flex gap-2 bg-white border-3 text-lg border-purple-950 border-b-6 px-3 py-2 rounded-xl text-purple-950 font-black">
-                            <PersonIcon />
-                            {{ selectedCzarPlayer?.name ?? "A player" }}
-                        </div>
-                    </template>
-                </div>
-            </div>
-
-            <div v-show="canStartNextRound" ref="czarNextRoundButton" class="fixed left-1/2 bottom-12 -translate-x-1/2 z-[80] pointer-events-auto">
-                <BaseButton size="lg" @click="onNextRoundClick">Volgende ronde</BaseButton>
-            </div>
-
-            <div v-if="showDebugPhaseButtons" class="fixed bottom-6 right-6 z-[90] flex flex-col gap-3 pointer-events-auto">
-                <BaseButton size="md" @click="onDebugNextPhase">Debug: Next phase</BaseButton>
-                <BaseButton size="md" @click="onDebugNextRound" :disabled="!isCzarResultPhase">Debug: Next round</BaseButton>
-            </div>
         </div>
     </div>
 </template>
