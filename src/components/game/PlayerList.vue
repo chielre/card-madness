@@ -16,6 +16,13 @@ const currentCzarId = computed(() => lobby.currentRound?.cardSelector?.player ??
 
 const listPhases = new Set(["board", "czar", "czar-result"])
 const shouldShowList = computed(() => listPhases.has(lobby.phase))
+const displayPlayers = computed(() => {
+  return [...lobby.players].sort((a, b) => {
+    const diff = (b.points ?? 0) - (a.points ?? 0)
+    if (diff !== 0) return diff
+    return a.name.localeCompare(b.name)
+  })
+})
 
 const selectedPlayerIds = computed(() => {
   const entries = lobby.currentRound?.playerSelectedCards ?? []
@@ -114,6 +121,12 @@ watch(
   { immediate: true }
 )
 
+watch(
+  () => lobby.players.map((player) => player.id),
+  () => nextTick(() => placeCzarToken(false)),
+  { immediate: true }
+)
+
 let hasPlacedCzar = false
 watch(
   () => currentCzarId.value,
@@ -153,7 +166,7 @@ onBeforeUnmount(() => {
 
 
       <ul class="space-y-2">
-        <li v-for="player in lobby.players" :key="player.id" class="group flex justify-between items-center gap-4 text-black text-xl font-bold p-2 rounded-xl even:bg-gray-100">
+        <li v-for="player in displayPlayers" :key="player.id" class="group flex justify-between items-center gap-4 text-black text-xl font-bold p-2 rounded-xl even:bg-gray-100">
           <div class="flex items-center gap-4">
             <div class="inline-block w-4 h-4 border-3 border-white outline-2 outline-black rounded-full" :class="getPlayerStatusClass(player)" :data-player-dot="player.id"></div>
             <div>{{ player.name }}</div>

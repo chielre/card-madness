@@ -30,8 +30,9 @@ const lobbyId = route.params.id as string
 
 const players = computed(() => lobby.players)
 const hasJoined = computed(() => {
-    if (!socket) return false
-    return !!players.value.find((p) => p.id === socket?.id)
+    const socketId = connection.socketId
+    if (!socketId) return false
+    return !!players.value.find((p) => p.id === socketId)
 })
 const shouldSkipName = computed(() => {
     const stage = (import.meta as any).env?.STAGE
@@ -152,6 +153,7 @@ Game socket events
 const handleGamePhaseChange = (payload: { phase: string }) => {
     if (payload.phase) {
         lobby.setPhase(payload.phase)
+        schedulePhaseSync(payload.phase)
     }
 }
 const handleGamePhaseTimer = (payload: { phase: string; durationMs?: number; expiresAt?: number }) => {
@@ -163,6 +165,30 @@ const handleGamePhaseTimeout = (payload: { phase: string }) => {
         lobby.markPhaseTimeout()
     }
 
+}
+
+let phaseSyncInFlight = false
+let phaseSyncQueued = false
+const activeRoundPhases = new Set(["board", "czar", "czar-result"])
+
+const schedulePhaseSync = async (nextPhase: string) => {
+    const needsRound = activeRoundPhases.has(nextPhase) && !lobby.currentRound
+    const needsPlayer = !lobby.getCurrentPlayer()
+    if (!needsRound && !needsPlayer) return
+    if (phaseSyncInFlight) {
+        phaseSyncQueued = true
+        return
+    }
+    phaseSyncInFlight = true
+    try {
+        await lobby.fetchState(lobbyId)
+    } finally {
+        phaseSyncInFlight = false
+        if (phaseSyncQueued) {
+            phaseSyncQueued = false
+            void schedulePhaseSync(nextPhase)
+        }
+    }
 }
 
 

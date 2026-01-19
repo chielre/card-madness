@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue"
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue"
 import gsap from "gsap"
 import { CustomEase } from "gsap/CustomEase"
 import PersonIcon from "vue-material-design-icons/Account.vue"
@@ -63,6 +63,34 @@ let czarResultStarting = false
 
 const showCzarResultButton = ref(false)
 
+type ScoreboardEntry = {
+  id: string
+  name: string
+  oldPoints: number
+  newPoints: number
+  pointsDelta: number
+  displayPoints: number
+  isCzar: boolean
+  isWinner: boolean
+}
+
+const scoreboardWrapRef = ref<HTMLElement | null>(null)
+const scoreboardVisible = ref(false)
+const scoreboardOffsetX = ref(240)
+const scoreboardEntries = ref<ScoreboardEntry[]>([])
+
+const scoreRowRefs = new Map<string, HTMLElement>()
+const scoreValueRefs = new Map<string, HTMLElement>()
+const scoreAwardRefs = new Map<string, HTMLElement>()
+
+const roundPointsSnapshot = ref(new Map<string, number>())
+
+const POINTS_CZAR_PICKED = 5
+const POINTS_CZAR_SELECT = 1
+
+let scoreboardTl: gsap.core.Timeline | null = null
+let scoreboardReorderRunning = false
+
 function cleanupCzarResultElements() {
   if (blackCardContainerEl) {
     blackCardContainerEl.remove()
@@ -77,6 +105,204 @@ function cleanupCzarResultElements() {
     whiteCardBackEl.remove()
     whiteCardBackEl = null
   }
+}
+
+function setScoreRowRef(el: Element | null, id: string) {
+  if (!id) return
+  if (el) {
+    scoreRowRefs.set(id, el as HTMLElement)
+  } else {
+    scoreRowRefs.delete(id)
+  }
+}
+
+function setScoreValueRef(el: Element | null, id: string) {
+  if (!id) return
+  if (el) {
+    scoreValueRefs.set(id, el as HTMLElement)
+  } else {
+    scoreValueRefs.delete(id)
+  }
+}
+
+function setScoreAwardRef(el: Element | null, id: string) {
+  if (!id) return
+  if (el) {
+    scoreAwardRefs.set(id, el as HTMLElement)
+  } else {
+    scoreAwardRefs.delete(id)
+  }
+}
+
+function sortEntriesByPoints(entries: ScoreboardEntry[], key: "oldPoints" | "newPoints") {
+  return [...entries].sort((a, b) => {
+    const diff = b[key] - a[key]
+    if (diff !== 0) return diff
+    return a.name.localeCompare(b.name)
+  })
+}
+
+function getRoundPointDelta(playerId: string) {
+  const winnerId = selectedEntry.value?.playerId ?? null
+  const czarId = lobby.getCurrentCzar()?.id ?? null
+  let delta = 0
+  if (winnerId && playerId === winnerId) delta += POINTS_CZAR_PICKED
+  if (czarId && playerId === czarId) delta += POINTS_CZAR_SELECT
+  return delta
+}
+
+function buildScoreboardEntries() {
+  const czarId = lobby.getCurrentCzar()?.id ?? ""
+  const winnerId = selectedEntry.value?.playerId ?? null
+  const fallbackSnapshot = new Map(lobby.players.map((player) => [player.id, Number(player.points) || 0]))
+  const snapshot = roundPointsSnapshot.value.size ? roundPointsSnapshot.value : fallbackSnapshot
+  const entries = lobby.players.map((player) => {
+    const oldPoints = snapshot.get(player.id) ?? (Number(player.points) || 0)
+    const pointsDelta = getRoundPointDelta(player.id)
+    const newPoints = oldPoints + pointsDelta
+    return {
+      id: player.id,
+      name: player.name,
+      oldPoints,
+      newPoints,
+      pointsDelta,
+      displayPoints: oldPoints,
+      isCzar: player.id === czarId,
+      isWinner: Boolean(winnerId && player.id === winnerId),
+    }
+  })
+
+  return sortEntriesByPoints(entries, "oldPoints")
+}
+
+function createPointsCountTimeline(entry: ScoreboardEntry) {
+  const pointsEl = scoreValueRefs.get(entry.id)
+  const tl = gsap.timeline()
+  const counter = { value: entry.oldPoints }
+  const duration = entry.newPoints === entry.oldPoints ? 0.25 : 0.85
+
+  tl.to(counter, {
+    value: entry.newPoints,
+    duration,
+    ease: "power1.out",
+    onUpdate: () => {
+      entry.displayPoints = Math.round(counter.value)
+    },
+    onComplete: () => {
+      entry.displayPoints = entry.newPoints
+    },
+  })
+
+  if (pointsEl) {
+    tl.to(pointsEl, { scale: 1.25, duration: 0.2, ease: "power2.out" }, 0)
+    tl.to(pointsEl, { scale: 1, duration: 0.35, ease: "bounce.out" }, 0.2)
+  }
+
+  return tl
+}
+
+async function animateScoreboardReorder(onDone?: () => void) {
+  if (scoreboardReorderRunning) return
+  scoreboardReorderRunning = true
+
+  const beforeRects = new Map<string, DOMRect>()
+  scoreboardEntries.value.forEach((entry) => {
+    const el = scoreRowRefs.get(entry.id)
+    if (el) beforeRects.set(entry.id, el.getBoundingClientRect())
+  })
+
+  scoreboardEntries.value = sortEntriesByPoints(scoreboardEntries.value, "newPoints")
+  await nextTick()
+
+  const tl = gsap.timeline({
+    onComplete: () => {
+      scoreboardReorderRunning = false
+      onDone?.()
+    },
+  })
+
+  scoreboardEntries.value.forEach((entry, index) => {
+    const el = scoreRowRefs.get(entry.id)
+    const before = beforeRects.get(entry.id)
+    if (!el || !before) return
+    const after = el.getBoundingClientRect()
+    const deltaY = before.top - after.top
+    if (!deltaY) return
+
+    gsap.set(el, { y: deltaY, zIndex: 2 })
+    tl.to(
+      el,
+      { y: 0, duration: 0.7, ease: "power3.out", clearProps: "zIndex" },
+      index * 0.08
+    )
+    tl.fromTo(
+      el,
+      { scale: 1.03 },
+      { scale: 1, duration: 0.45, ease: "power2.out" },
+      index * 0.08
+    )
+  })
+  if (!tl.getChildren().length) {
+    scoreboardReorderRunning = false
+    onDone?.()
+  }
+  return tl
+}
+
+function animateScoreAwards() {
+  const awards = scoreboardEntries.value
+    .filter((entry) => entry.pointsDelta > 0)
+    .map((entry) => scoreAwardRefs.get(entry.id))
+    .filter(Boolean) as HTMLElement[]
+  if (!awards.length) return
+
+  gsap.set(awards, { autoAlpha: 1 })
+  gsap.fromTo(
+    awards,
+    { scale: 0.7, y: -6, rotate: -6 },
+    { scale: 1, y: 0, rotate: 0, duration: 0.6, ease: "elastic.out(1, 0.5)", stagger: 0.1 }
+  )
+}
+
+function startScoreboardAnimation() {
+  scoreboardTl?.kill()
+  scoreboardTl = null
+
+  scoreboardEntries.value = buildScoreboardEntries()
+  scoreboardVisible.value = true
+
+  nextTick(() => {
+    const wrap = scoreboardWrapRef.value
+    if (!wrap) return
+
+    gsap.set(wrap, { autoAlpha: 0, y: 24 })
+    scoreboardTl = gsap.timeline()
+      .to(wrap, { autoAlpha: 1, y: 0, duration: 0.45, ease: "power2.out" })
+
+    const czarId = lobby.getCurrentCzar()?.id ?? ""
+    const czarEntry = scoreboardEntries.value.find((entry) => entry.id === czarId)
+    const otherEntries = scoreboardEntries.value.filter((entry) => entry.id !== czarId)
+    const countOrder = czarEntry ? [czarEntry, ...otherEntries] : otherEntries
+
+    countOrder.forEach((entry) => {
+      scoreboardTl?.add(createPointsCountTimeline(entry), "+=0.12")
+    })
+    scoreboardTl?.call(() => {
+      animateScoreboardReorder(() => animateScoreAwards())
+    })
+  })
+}
+
+function resetScoreboardAnimation() {
+  scoreboardTl?.kill()
+  scoreboardTl = null
+  scoreboardVisible.value = false
+  scoreboardEntries.value = []
+  scoreRowRefs.clear()
+  scoreValueRefs.clear()
+  scoreAwardRefs.clear()
+  scoreboardReorderRunning = false
+  roundPointsSnapshot.value = new Map()
 }
 
 function positionCzarResultPlayer() {
@@ -326,6 +552,7 @@ function resetCzarResultAnimation() {
   czarResultOutroTl = null
   clearBlackCardTyping()
   cleanupCzarResultElements()
+  resetScoreboardAnimation()
 
   if (transitionEls.value.length) gsap.set(transitionEls.value, { clearProps: "all" })
   if (czarResultPlayerRef.value) gsap.set(czarResultPlayerRef.value, { clearProps: "all" })
@@ -339,6 +566,10 @@ async function startCzarResultAnimation() {
   resultsVisible.value = true
   czarResultStarting = true
   await nextTick()
+
+  roundPointsSnapshot.value = new Map(
+    lobby.players.map((player) => [player.id, Number(player.points) || 0])
+  )
 
   czarResultOutroTl?.kill()
   czarResultOutroTl = null
@@ -388,6 +619,8 @@ async function startCzarResultAnimation() {
   const hasWhiteCardIntro = Boolean(whiteCard)
   const gap = Math.round(rect.width * 0.5)
   const offset = hasWhiteCardIntro ? Math.round(rect.width / 2 + gap / 2) : 0
+  const scoreboardShiftX = Math.round(Math.min(Math.max(rect.width * 0.35, 120), 200))
+  const scoreboardOffset = Math.round(Math.min(Math.max(rect.width * 0.75, 200), window.innerWidth * 0.3))
 
   transitionEls.value.forEach((el, idx) => {
     tl.fromTo(
@@ -475,6 +708,7 @@ async function startCzarResultAnimation() {
   const spinSwapAt = spinStart + typeDurationMs / 1000
   const spinEase = "power3.inOut"
   const spinTargets = whiteCard ? [...mergedCards, whiteCard] : mergedCards
+  const scoreboardStart = spinEnd + 1.05
 
   tl.to(
     spinTargets,
@@ -503,8 +737,6 @@ async function startCzarResultAnimation() {
     )
     .call(() => playCzarResultShine(card), [], spinEnd + 0.55)
 
-
-
   tl.call(() => positionCzarResultPlayer(), [], spinEnd + 0.6)
     .fromTo(
       czarResultPlayerRef.value,
@@ -512,6 +744,28 @@ async function startCzarResultAnimation() {
       { y: 0, autoAlpha: 1, duration: 0.5, ease: "power2.out", delay: 0.2 },
       spinEnd + 0.65
     )
+    .to(
+      mergedCards,
+      {
+        x: -scoreboardShiftX,
+        duration: 0.45,
+        ease: "power2.out",
+      },
+      scoreboardStart
+    )
+    .to(
+      czarResultPlayerRef.value,
+      {
+        x: -scoreboardShiftX,
+        duration: 0.45,
+        ease: "power2.out",
+      },
+      scoreboardStart
+    )
+    .call(() => {
+      scoreboardOffsetX.value = scoreboardOffset
+      startScoreboardAnimation()
+    }, [], scoreboardStart + 0.1)
     .call(() => {
       showCzarResultButton.value = true
     }, [], spinEnd + 0.65)
@@ -529,8 +783,6 @@ function startCzarResultOutroAnimation() {
   const original = blackCardContainerEl
   const outroTargets = original ? (whiteCardBackEl ? [original, whiteCardBackEl] : [original]) : null
 
-  console.log('outro')
-
   czarResultOutroTl?.kill()
   czarResultOutroTl = gsap.timeline({
     onComplete: () => {
@@ -540,6 +792,7 @@ function startCzarResultOutroAnimation() {
 
   if (czarResultPlayerRef.value) czarResultOutroTl.to(czarResultPlayerRef.value, { y: 20, autoAlpha: 0, duration: 0.25, ease: "power2.in" }, 0)
   if (czarNextRoundButton.value) czarResultOutroTl.to(czarNextRoundButton.value, { y: 20, autoAlpha: 0, duration: 0.25, ease: "power2.in" }, 0)
+  if (scoreboardWrapRef.value) czarResultOutroTl.to(scoreboardWrapRef.value, { y: 20, autoAlpha: 0, duration: 0.3, ease: "power2.in" }, 0)
 
   if (transitionEls.value.length) {
 
@@ -597,6 +850,23 @@ watch(
     }
   }
 )
+
+onBeforeUnmount(() => {
+  czarResultOutroTl?.kill()
+  czarResultOutroTl = null
+  scoreboardTl?.kill()
+  scoreboardTl = null
+  clearBlackCardTyping()
+  cleanupCzarResultElements()
+  scoreRowRefs.clear()
+  scoreValueRefs.clear()
+  scoreAwardRefs.clear()
+  scoreboardEntries.value = []
+  scoreboardVisible.value = false
+  resultsVisible.value = false
+  showCzarResultButton.value = false
+  czarResultStarting = false
+})
 </script>
 
 <template>
@@ -630,6 +900,46 @@ watch(
               {{ selectedCzarPlayer?.name ?? "A player" }}
             </div>
           </template>
+        </div>
+      </div>
+
+      <div
+        v-show="scoreboardVisible"
+        ref="scoreboardWrapRef"
+        class="fixed left-1/2 top-1/2 z-30 w-[360px] max-w-[80vw] -translate-y-1/2 translate-x-[var(--scoreboard-offset)] opacity-0 pointer-events-none"
+        :style="{ '--scoreboard-offset': `${scoreboardOffsetX}px` }"
+      >
+        <div class="bg-white/95 border-4 border-b-8 border-black rounded-2xl p-4 text-black shadow-[0_18px_30px_rgba(0,0,0,0.35)]">
+          <div class="text-lg font-black uppercase tracking-wide">Scoreboard</div>
+          <ul class="mt-3 space-y-2">
+            <li
+              v-for="entry in scoreboardEntries"
+              :key="entry.id"
+              :ref="(el) => setScoreRowRef(el, entry.id)"
+              class="relative flex items-center justify-between gap-4 rounded-xl border-2 border-b-4 border-black px-4 py-3"
+              :class="entry.isWinner ? 'bg-yellow-100 border-yellow-500' : 'bg-white'"
+            >
+              <div class="flex items-center gap-2">
+                <span v-if="entry.isCzar" class="px-2 py-0.5 text-xs font-black uppercase bg-yellow-300 border-2 border-b-4 border-black rounded-md">
+                  czar
+                </span>
+                <span v-if="entry.isWinner" class="px-2 py-0.5 text-xs font-black uppercase bg-green-300 border-2 border-b-4 border-black rounded-md">
+                  winner
+                </span>
+                <span class="text-lg font-black">{{ entry.name }}</span>
+              </div>
+              <div :ref="(el) => setScoreValueRef(el, entry.id)" class="text-xl font-black tabular-nums">
+                {{ entry.displayPoints }} pts
+              </div>
+              <div
+                v-if="entry.pointsDelta > 0"
+                :ref="(el) => setScoreAwardRef(el, entry.id)"
+                class="absolute -right-3 top-1/2 -translate-y-1/2 px-2 py-0.5 text-xs font-black uppercase bg-black text-white border-2 border-b-4 border-black rounded-md opacity-0"
+              >
+                +{{ entry.pointsDelta }} pts
+              </div>
+            </li>
+          </ul>
         </div>
       </div>
 
