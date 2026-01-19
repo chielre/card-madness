@@ -16,7 +16,7 @@ const lobby = useLobbyStore()
 
 <template>
     <div>
-        <img class="logo m-auto" width="300" src="../../../assets/images/logo.png" alt="">
+        <img class="logo m-auto" width="300" src="../../assets/images/logo.png" alt="">
 
         <div class="mt-4 bg-white border-4 border-b-8 rounded-xl border-black p-8 text-black">
 
