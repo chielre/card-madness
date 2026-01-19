@@ -83,7 +83,7 @@ export const prepareGame = async ({ games, lobbyId }) => {
 
     // 1) Create 4 default rounds
     game.rounds = game.rounds ?? {}
-    for (let r = 1; r <= 12; r++) {
+    for (let r = 1; r <= 3; r++) {
         if (!game.rounds[r]) game.rounds[r] = {
             cardSelector: { player: null, selectedCard: {} },
             blackCard: null,
@@ -642,4 +642,25 @@ export const selectCzarCard = ({ games, lobbyId, playerId, entry }) => {
     games.set(lobbyId, game)
 
     return { game, round, selected: match }
+}
+
+const resetPlayerForLobby = (player) => ({
+    ...player,
+    ready: false,
+    white_cards: [],
+    eligibleFromRound: 1,
+    points: 0,
+})
+
+export const resetGameForLobby = ({ games, lobbyId }) => {
+    const game = games.get(lobbyId)
+    if (!game) return { error: "not_found" }
+
+    game.currentRound = null
+    game.rounds = null
+    game.selectedPacks = null
+    game.players = (game.players ?? []).map(resetPlayerForLobby)
+
+    games.set(lobbyId, game)
+    return { game }
 }

@@ -111,6 +111,15 @@ const closeReadyModal = () => {
     readyModalRef.value?.reset()
 }
 
+const resetLobbyUi = (opts?: { keepReadyModal?: boolean }) => {
+    activeFilters.value = new Set()
+    packInfoModalRef.value?.close()
+    if (!opts?.keepReadyModal) {
+        readyModalRef.value?.reset()
+    }
+    currentMusicPackId.value = null
+}
+
 const canKickPlayer = (playerId: string) =>
     lobby.getCurrentPlayerIsHost() && playerId !== connection.getSocketSafe()?.id
 
@@ -121,6 +130,18 @@ const kickPlayer = async (playerId: string) => {
 
 watch(selectedPackIds, () => syncPackSelection(), { immediate: true })
 
+watch(
+    () => lobby.phase,
+    (phase, prev) => {
+        if (phase === 'starting') {
+            resetLobbyUi({ keepReadyModal: true })
+            return
+        }
+        if (phase === 'lobby' || prev === 'starting') {
+            resetLobbyUi()
+        }
+    }
+)
 
 watch(
     () => lobby.phaseTimeoutTick,
