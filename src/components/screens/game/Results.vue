@@ -18,16 +18,14 @@ const audioStore = useAudioStore()
 
 const czarResultPlayerRef = ref<HTMLElement | null>(null)
 const czarNextRoundButton = ref<HTMLElement | null>(null)
+const resultsVisible = ref(false)
 
 const transitionEl1 = ref<HTMLElement | null>(null)
 const transitionEl2 = ref<HTMLElement | null>(null)
 const transitionEl3 = ref<HTMLElement | null>(null)
 const transitionEl4 = ref<HTMLElement | null>(null)
 
-const transitionEls = computed(
-  () => [transitionEl1.value, transitionEl2.value, transitionEl3.value, transitionEl4.value].filter(Boolean) as HTMLElement[]
-)
-
+const transitionEls = computed(() => [transitionEl1.value, transitionEl2.value, transitionEl3.value, transitionEl4.value].filter(Boolean) as HTMLElement[])
 const blackCardHtml = computed(() => lobby.getCurrentBlackCardHtml() || "...")
 const blackCardEmptyHtml = computed(() => {
   const blackCard = lobby.currentRound?.blackCard
@@ -152,18 +150,10 @@ function createBlackCard() {
   blackCardContainerEl = container
   blackCardFrontEl = front
   setBlackCardHtml(blackCardEmptyHtml.value)
-  const frontRect = front.getBoundingClientRect()
-  container.style.width = `${Math.round(frontRect.width) || 200}px`
-  container.style.height = `${Math.round(frontRect.height) || 300}px`
-  front.style.position = "absolute"
-  front.style.inset = "0"
-  container.style.left = `${Math.round((window.innerWidth - container.offsetWidth) / 2)}px`
-  container.style.top = `${Math.round((window.innerHeight - container.offsetHeight) / 2)}px`
-  container.style.visibility = "visible"
-  return container.getBoundingClientRect()
+  return container
 }
 
-function createWhiteCard(rect: DOMRect) {
+function createWhiteCard() {
   const el = document.createElement("div")
   el.className = "card-flip czar-whitecard-clone"
   el.innerHTML = `
@@ -172,10 +162,10 @@ function createWhiteCard(rect: DOMRect) {
   `
   Object.assign(el.style, {
     position: "fixed",
-    left: `${rect.left}px`,
-    top: `${rect.top}px`,
-    width: `${rect.width}px`,
-    height: `${rect.height}px`,
+    left: "0px",
+    top: "0px",
+    width: "0px",
+    height: "0px",
     margin: "0",
     zIndex: "70",
     transformOrigin: "center",
@@ -201,16 +191,16 @@ function createWhiteCard(rect: DOMRect) {
   return el
 }
 
-function createWhiteCardBack(rect: DOMRect) {
+function createWhiteCardBack() {
   const el = document.createElement("div")
   el.className = "czar-whitecard-back"
   el.innerHTML = `<div class="madness-card card-white card-back" aria-hidden="true"></div>`
   Object.assign(el.style, {
     position: "fixed",
-    left: `${rect.left}px`,
-    top: `${rect.top}px`,
-    width: `${rect.width}px`,
-    height: `${rect.height}px`,
+    left: "0px",
+    top: "0px",
+    width: "0px",
+    height: "0px",
     margin: "0",
     zIndex: "60",
     transformOrigin: "center",
@@ -224,6 +214,27 @@ function createWhiteCardBack(rect: DOMRect) {
   }
   whiteCardBackEl = el
   return el
+}
+
+function layoutBlackCard(container: HTMLElement) {
+  if (!blackCardFrontEl) return null
+  const frontRect = blackCardFrontEl.getBoundingClientRect()
+  container.style.width = `${Math.round(frontRect.width) || 200}px`
+  container.style.height = `${Math.round(frontRect.height) || 300}px`
+  blackCardFrontEl.style.position = "absolute"
+  blackCardFrontEl.style.inset = "0"
+  container.style.left = `${Math.round((window.innerWidth - container.offsetWidth) / 2)}px`
+  container.style.top = `${Math.round((window.innerHeight - container.offsetHeight) / 2)}px`
+  container.style.visibility = "visible"
+  return container.getBoundingClientRect()
+}
+
+function setCardRect(el: HTMLElement | null, rect: DOMRect) {
+  if (!el) return
+  el.style.left = `${rect.left}px`
+  el.style.top = `${rect.top}px`
+  el.style.width = `${rect.width}px`
+  el.style.height = `${rect.height}px`
 }
 
 function getAnswerTextFromHtml(html: string) {
@@ -325,6 +336,7 @@ function resetCzarResultAnimation() {
 async function startCzarResultAnimation() {
   if (czarResultStarting) return
 
+  resultsVisible.value = true
   czarResultStarting = true
   await nextTick()
 
@@ -332,16 +344,19 @@ async function startCzarResultAnimation() {
   czarResultOutroTl = null
 
   cleanupCzarResultElements()
-  const rect = createBlackCard()
-
-  const card = blackCardContainerEl
-  if (!card) {
+  const card = createBlackCard()
+  const rect = layoutBlackCard(card)
+  if (!rect) {
     czarResultStarting = false
     return
   }
   const hasWhiteCard = Boolean(selectedCardHtml.value)
-  const whiteCard = hasWhiteCard ? createWhiteCard(rect) : null
-  const whiteBackCard = createWhiteCardBack(rect)
+  const whiteCard = hasWhiteCard ? createWhiteCard() : null
+  const whiteBackCard = createWhiteCardBack()
+
+  setCardRect(card, rect)
+  setCardRect(whiteCard, rect)
+  setCardRect(whiteBackCard, rect)
 
   const mergedCards = whiteBackCard ? [card, whiteBackCard] : [card]
   gsap.set(card, {
@@ -369,9 +384,9 @@ async function startCzarResultAnimation() {
   const scaleUp = Math.max(1.1, Math.min(1.45, Math.min(window.innerWidth / 950, window.innerHeight / 760)))
   const settleScale = Math.max(1.05, scaleUp - 0.2)
   const sharedRotate = -4
-  const introRotate = gsap.utils.random(-10, 10)
+  const introRotate = gsap.utils.random(-5, 5)
   const hasWhiteCardIntro = Boolean(whiteCard)
-  const gap = Math.round(rect.width * 0.12)
+  const gap = Math.round(rect.width * 0.5)
   const offset = hasWhiteCardIntro ? Math.round(rect.width / 2 + gap / 2) : 0
 
   transitionEls.value.forEach((el, idx) => {
@@ -383,54 +398,32 @@ async function startCzarResultAnimation() {
     )
   })
 
-  const driftX = Math.max(rect.width * 1.8, window.innerWidth * 0.85)
+  const driftX = Math.max(rect.width * 1.8)
 
+  // Cards inside screen
   tl.fromTo(
     mergedCards,
-    { x: -driftX, rotateY: -65, rotate: -introRotate, scale: 1.05, autoAlpha: 0 },
+    { x: -driftX, rotateY: -65, rotate: introRotate, scale: 1.05, autoAlpha: 0 },
     {
       x: -offset,
       rotateY: 0,
-      rotate: introRotate,
+      rotate: gsap.utils.random(-5, 5),
       scale: scaleUp * 1.05,
       autoAlpha: 1,
-      duration: 1.1,
-      ease: "back.out(1.6)",
-    },
-    0.5
-  )
-  if (whiteCard) {
-    tl.fromTo(
-      whiteCard,
-      { x: driftX, rotate: introRotate, scale: 1.05, autoAlpha: 0 },
-      {
-        x: offset,
-        rotate: -introRotate,
-        scale: scaleUp * 1.05,
-        autoAlpha: 1,
-        duration: 1.1,
-        ease: "back.out(1.6)",
-      },
-      0.5
-    )
-  }
-
-  tl.to(
-    mergedCards,
-    {
-      rotate: sharedRotate,
-      scale: scaleUp,
       duration: 1,
       ease: "power3.inOut",
     },
     1
   )
   if (whiteCard) {
-    tl.to(
+    tl.fromTo(
       whiteCard,
+      { x: driftX, rotate: -introRotate, scale: 1.05, autoAlpha: 0 },
       {
-        rotate: sharedRotate,
-        scale: scaleUp,
+        x: offset,
+        rotate: gsap.utils.random(-5, 5),
+        scale: scaleUp * 1.05,
+        autoAlpha: 1,
         duration: 1,
         ease: "power3.inOut",
       },
@@ -440,13 +433,13 @@ async function startCzarResultAnimation() {
 
   tl.to(
     mergedCards,
-    { scale: settleScale, rotate: sharedRotate, duration: 0.6, ease: "readyBounce" },
+    { scale: settleScale, duration: 0.6, ease: "readyBounce" },
     2
   )
   if (whiteCard) {
     tl.to(
       whiteCard,
-      { scale: settleScale, rotate: sharedRotate, duration: 0.6, ease: "readyBounce" },
+      { scale: settleScale, duration: 0.6, ease: "readyBounce" },
       2
     )
   }
@@ -505,10 +498,12 @@ async function startCzarResultAnimation() {
     }, [], spinEnd + 0.05)
     .to(
       mergedCards,
-      { y: 0, rotate: 2, duration: 0.35, ease: "power4.in" },
+      { y: 0, rotate: 1, duration: 0.35, ease: "power4.in" },
       spinEnd + 0.15
     )
     .call(() => playCzarResultShine(card), [], spinEnd + 0.55)
+
+
 
   tl.call(() => positionCzarResultPlayer(), [], spinEnd + 0.6)
     .fromTo(
@@ -534,6 +529,8 @@ function startCzarResultOutroAnimation() {
   const original = blackCardContainerEl
   const outroTargets = original ? (whiteCardBackEl ? [original, whiteCardBackEl] : [original]) : null
 
+  console.log('outro')
+
   czarResultOutroTl?.kill()
   czarResultOutroTl = gsap.timeline({
     onComplete: () => {
@@ -545,7 +542,14 @@ function startCzarResultOutroAnimation() {
   if (czarNextRoundButton.value) czarResultOutroTl.to(czarNextRoundButton.value, { y: 20, autoAlpha: 0, duration: 0.25, ease: "power2.in" }, 0)
 
   if (transitionEls.value.length) {
-    czarResultOutroTl.to(transitionEls.value, { scale: 0, duration: 0.6, ease: "power2.inOut", stagger: 0.05 }, 0)
+
+    transitionEls.value.forEach((el, idx) => {
+      czarResultOutroTl?.to(
+        el,
+        { scale: 0, duration: .5, ease: "power2.inOut" },
+        0 + [0.3, 0.2, 0.1, 0][idx]
+      )
+    })
   }
 
   if (outroTargets) {
@@ -561,6 +565,11 @@ function startCzarResultOutroAnimation() {
       0
     )
   }
+
+  czarResultOutroTl.call(() => {
+    resultsVisible.value = false
+
+  }, [], 2)
 }
 
 async function onNextRoundClick() {
@@ -591,41 +600,43 @@ watch(
 </script>
 
 <template>
-  <section class="relative min-h-screen flex items-center justify-center px-8">
-    <div ref="transitionEl1" class="fixed aspect-square scale-0 translate-[-50%,-50%] bg-pink-300/70 z-10 w-screen rounded-full"></div>
-    <div ref="transitionEl2" class="fixed aspect-square scale-0 translate-[-50%,-50%] bg-green-300/70 z-10 w-screen rounded-full"></div>
-    <div ref="transitionEl3" class="fixed aspect-square scale-0 translate-[-50%,-50%] bg-blue-300/70 z-10 w-screen rounded-full"></div>
-    <div ref="transitionEl4" class="fixed aspect-square scale-0 translate-[-50%,-50%] bg-purple-800 z-10 w-screen rounded-full"></div>
+  <div class="fixed inset-0" v-if="resultsVisible">
+    <section class="relative min-h-screen flex items-center justify-center px-8">
+      <div ref="transitionEl1" class="fixed aspect-square scale-0 translate-[-50%,-50%] bg-pink-300/70 z-10 w-screen rounded-full"></div>
+      <div ref="transitionEl2" class="fixed aspect-square scale-0 translate-[-50%,-50%] bg-green-300/70 z-10 w-screen rounded-full"></div>
+      <div ref="transitionEl3" class="fixed aspect-square scale-0 translate-[-50%,-50%] bg-blue-300/70 z-10 w-screen rounded-full"></div>
+      <div ref="transitionEl4" class="fixed aspect-square scale-0 translate-[-50%,-50%] bg-purple-800 z-10 w-screen rounded-full"></div>
 
-    <div v-show="lobby.phase === 'czar-result'" ref="czarResultPlayerRef" class="fixed opacity-0 z-20 pointer-events-none">
-      <div class="text-2xl flex items-center gap-3 font-bold text-white">
-        <template v-if="selectedCzarPlayer?.id === lobby.getCurrentPlayer()?.id">
-          <span>czar</span>
-          <div class="flex gap-2 bg-white border-3 text-lg border-purple-950 border-b-6 px-3 py-2 rounded-xl text-purple-950 font-black">
-            <PersonIcon />
-            {{ lobby.getCurrentCzar()?.name ?? "A player" }}
-          </div>
-          koos jou kaart!
-        </template>
+      <div v-show="lobby.phase === 'czar-result'" ref="czarResultPlayerRef" class="fixed opacity-0 z-20 pointer-events-none">
+        <div class="text-2xl flex items-center gap-3 font-bold text-white">
+          <template v-if="selectedCzarPlayer?.id === lobby.getCurrentPlayer()?.id">
+            <span>czar</span>
+            <div class="flex gap-2 bg-white border-3 text-lg border-purple-950 border-b-6 px-3 py-2 rounded-xl text-purple-950 font-black">
+              <PersonIcon />
+              {{ lobby.getCurrentCzar()?.name ?? "A player" }}
+            </div>
+            koos jou kaart!
+          </template>
 
-        <template v-else>
-          <span>czar</span>
-          <div class="flex gap-2 bg-white border-3 text-lg border-purple-950 border-b-6 px-3 py-2 rounded-xl text-purple-950 font-black">
-            <PersonIcon />
-            {{ lobby.getCurrentCzar()?.name ?? "A player" }}
-          </div>
-          koos de kaart van
-          <div class="flex gap-2 bg-white border-3 text-lg border-purple-950 border-b-6 px-3 py-2 rounded-xl text-purple-950 font-black">
-            <PersonIcon />
-            {{ selectedCzarPlayer?.name ?? "A player" }}
-          </div>
-        </template>
+          <template v-else>
+            <span>czar</span>
+            <div class="flex gap-2 bg-white border-3 text-lg border-purple-950 border-b-6 px-3 py-2 rounded-xl text-purple-950 font-black">
+              <PersonIcon />
+              {{ lobby.getCurrentCzar()?.name ?? "A player" }}
+            </div>
+            koos de kaart van
+            <div class="flex gap-2 bg-white border-3 text-lg border-purple-950 border-b-6 px-3 py-2 rounded-xl text-purple-950 font-black">
+              <PersonIcon />
+              {{ selectedCzarPlayer?.name ?? "A player" }}
+            </div>
+          </template>
+        </div>
       </div>
-    </div>
 
-    <div v-show="canStartNextRound && showCzarResultButton" ref="czarNextRoundButton" class="fixed left-1/2 bottom-12 -translate-x-1/2 z-[80] pointer-events-auto">
-      <BaseButton size="lg" @click="onNextRoundClick">Volgende ronde</BaseButton>
-    </div>
+      <div v-show="canStartNextRound && showCzarResultButton" ref="czarNextRoundButton" class="fixed left-1/2 bottom-12 -translate-x-1/2 z-[80] pointer-events-auto">
+        <BaseButton size="lg" @click="onNextRoundClick">Volgende ronde</BaseButton>
+      </div>
 
-  </section>
+    </section>
+  </div>
 </template>

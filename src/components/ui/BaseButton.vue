@@ -22,7 +22,7 @@ const props = withDefaults(defineProps<{
   color?: ButtonColor
   size?: ButtonSize
   disabled?: boolean
-  icon?: 'Plus' | 'ChevronRight' | 'Music' | 'Github' | 'Cog' | 'Logout'
+  icon?: 'Plus' | 'ChevronRight' | 'Music' | 'Github' | 'Cog' | 'Logout' | 'ContentCopy'
   iconPosition?: 'left' | 'right'
   iconClass?: string
 }>(), {

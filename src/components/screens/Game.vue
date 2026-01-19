@@ -14,8 +14,8 @@ const lobby = useLobbyStore()
 
 const showLobbyScreen = computed(() => ['lobby', 'starting'].includes(lobby.phase) || (lobby.phase === 'intro' && !shouldSkipIntro.value))
 const showIntroScreen = computed(() => lobby.phase === 'intro' && !shouldSkipIntro.value)
-const showBoardScreen = computed(() => ['intro', 'board', 'czar'].includes(lobby.phase))
-const showCzarResultsScreen = computed(() => lobby.phase === 'czar-result')
+const showBoardScreen = computed(() => ['intro', 'board', 'czar', 'czar-result'].includes(lobby.phase))
+const showCzarResultsScreen = computed(() => ['board', 'czar', 'czar-result'].includes(lobby.phase))
 const showResultsScreen = computed(() => lobby.phase === 'results')
 
 const LobbyScreenRef = ref<InstanceType<typeof LobbyScreen> | null>(null)
