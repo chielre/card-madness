@@ -493,8 +493,23 @@ export const useLobbyStore = defineStore('lobby', {
             if (!socket) return
             socket.emit("player:card-lock-boost", { lobbyId: this.lobbyId, playerId })
         },
+        async checkLobbyExists(lobbyId: string): Promise<boolean> {
+            const code = String(lobbyId ?? '')
+            if (!code) return false
 
+            const conn = useConnectionStore()
+            const res = await conn.emitWithAck<Game>('room:state', { lobbyId: code })
 
+            if (res?.error) return false
+
+            this.applyServerState(res)
+            return true
+        },
+
+        goToGame(lobbyId: string) {
+            const code = String(lobbyId ?? '')
+            return router.push({ name: 'game', params: { id: code } })
+        },
 
     },
 })

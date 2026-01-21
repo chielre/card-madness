@@ -1,4 +1,3 @@
-import { nanoid } from 'nanoid'
 import { getPacks, packExists } from '../utils/packs.js'
 import {
     getPackCards,
@@ -18,6 +17,14 @@ const getGameLanguage = (game) => normalizeLanguage(game?.language)
 
 const keyOf = (c): string => `${c.pack}:${c.card_id}`
 const rand = (max) => Math.floor(Math.random() * max)
+const generateLobbyCode = () => String(Math.floor(10000 + Math.random() * 90000))
+const createUniqueLobbyCode = (games) => {
+    let code = generateLobbyCode()
+    while (games.has(code)) {
+        code = generateLobbyCode()
+    }
+    return code
+}
 const randomPlayerLobbyName = (players) => players[rand(players.length)]?.name ?? ""
 const countNameSlots = (text) => (text?.match(/:name/g) ?? []).length
 const pickRandomLobbyNames = (players, count) =>
@@ -33,7 +40,7 @@ const buildCardNames = (players, text) => {
 export const createGame = ({ games, hostId, hostName, language }) => {
     const normalizedHostName = normalizeName(hostName)
     const hostLanguage = normalizeLanguage(language)
-    const lobbyId = nanoid(6)
+    const lobbyId = createUniqueLobbyCode(games)
     const game = {
         lobbyId,
         host: hostId,
@@ -83,7 +90,7 @@ export const prepareGame = async ({ games, lobbyId }) => {
 
     // 1) Create 4 default rounds
     game.rounds = game.rounds ?? {}
-    for (let r = 1; r <= 3; r++) {
+    for (let r = 1; r <= 5; r++) {
         if (!game.rounds[r]) game.rounds[r] = {
             cardSelector: { player: null, selectedCard: {} },
             blackCard: null,

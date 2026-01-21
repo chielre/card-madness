@@ -11,6 +11,11 @@ const CreateLobby = () => {
     router.push('lobby')
 }
 
+const JoinLobby = () => {
+    router.push('join')
+}
+
+
 const openGithubRepository = () => {
 
     window.open('https://github.com/chielre/card-madness/', '_blank', 'noopener,noreferrer')
@@ -31,7 +36,7 @@ const openLicense = () => {
             <img class="logo" width="300" src="../assets/images/logo.png" alt="">
             <div class="mt-16 flex flex-col gap-4">
                 <BaseButton @click="CreateLobby" size="lg">Create a lobby</BaseButton>
-                <BaseButton size="lg">Join lobby</BaseButton>
+                <BaseButton @click="JoinLobby" size="lg">Join lobby</BaseButton>
             </div>
 
             <div class="flex justify-between items-center mt-8">
