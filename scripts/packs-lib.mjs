@@ -1,3 +1,4 @@
+import * as tar from "tar";
 import fs from "node:fs/promises"
 import fsSync from "node:fs"
 import path from "node:path"
@@ -97,7 +98,11 @@ function runCommand(cmd, args) {
 
 async function extractArchive(archivePath, destDir) {
   await fs.mkdir(destDir, { recursive: true })
-  await runCommand("tar", ["--force-local", "-xzf", archivePath, "-C", destDir])
+  await tar.x({
+    file: archivePath,
+    cwd: destDir,
+    gzip: true,
+  });
 }
 
 async function readPackMeta(packDir) {
