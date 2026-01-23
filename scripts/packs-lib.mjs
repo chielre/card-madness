@@ -10,7 +10,7 @@ import dotenv from "dotenv"
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env"), quiet: true })
 
-const PACKS_SOURCE_URL = "https://codeload.github.com/chielre/card-madness-packs/tar.gz/main"
+const COMMUNITY_PACKS_SOURCE_URL = "https://codeload.github.com/chielre/card-madness-packs/tar.gz/main"
 const TRUTHY = new Set(["1", "true", "yes", "on"])
 
 export function resolvePacksDir(packsDirEnv) {
@@ -18,9 +18,9 @@ export function resolvePacksDir(packsDirEnv) {
 }
 
 export function getPackFilterConfig() {
-  const includeNsfwRaw = process.env.PACKS_DOWNLOAD_INCLUDE_NSFW
-  const onlyCmRaw = process.env.PACKS_DOWNLOAD_ONLY_CM
-  const includeDeprecatedRaw = process.env.PACKS_DOWNLOAD_DEPRECATED
+  const includeNsfwRaw = process.env.COMMUNITY_PACKS_DOWNLOAD_INCLUDE_NSFW
+  const onlyCmRaw = process.env.COMMUNITY_PACKS_DOWNLOAD_ONLY_CM
+  const includeDeprecatedRaw = process.env.COMMUNITY_PACKS_DOWNLOAD_DEPRECATED
   const includeNsfw = includeNsfwRaw == null ? true : TRUTHY.has(String(includeNsfwRaw).toLowerCase())
   const onlyCm = onlyCmRaw == null ? false : TRUTHY.has(String(onlyCmRaw).toLowerCase())
   const includeDeprecated = includeDeprecatedRaw == null ? false : TRUTHY.has(String(includeDeprecatedRaw).toLowerCase())
@@ -161,7 +161,7 @@ async function fetchSource() {
   const archivePath = path.join(tmpRoot, "packs.tar.gz")
   const extractDir = path.join(tmpRoot, "extract")
 
-  await downloadFile(PACKS_SOURCE_URL, archivePath)
+  await downloadFile(COMMUNITY_PACKS_SOURCE_URL, archivePath)
   await extractArchive(archivePath, extractDir)
 
   const topEntries = await fs.readdir(extractDir, { withFileTypes: true })
@@ -175,6 +175,17 @@ async function fetchSource() {
 export async function installOrUpdatePacks(packsDirEnv, { label, updateOnly = false } = {}) {
   const packsDir = resolvePacksDir(packsDirEnv)
   const filter = getPackFilterConfig()
+  const enabled = ["1", "true", "yes", "on"].includes(String(process.env.COMMUNITY_PACKS_ENABLED ?? "1").toLowerCase())
+
+  if (!enabled) {
+
+    console.log([
+      `${chalk.red.bold('NOTE:')} ${chalk.red('Community packs are disabled')}\n`,
+      `To enable community packs set the ${chalk.bgWhite.black.bold('COMMUNITY_PACKS_ENABLED')} variable in your .env file in the root folder of this project to ${chalk.bold('1')} \n`,
+    ].join("\n"))
+    process.exit()
+  }
+
   const spinner = createSpinner(label || "Downloading packs")
   spinner.start()
 

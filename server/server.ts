@@ -13,10 +13,11 @@ dotenv.config({ path: "../.env", quiet: true })
 const TRUTHY = new Set(["1", "true", "yes", "on"])
 
 
-const PORT = process.env.SERVER_WS_PORT || 3001
+const WS_PORT = process.env.SERVER_WS_PORT || 3001
+const WS_HOST = process.env.SERVER_WS_HOST || "127.0.0.1"
 const rawWsOrigins = process.env.SERVER_WS_ORIGINS || ""
 const allowedWsOrigins = rawWsOrigins.split(",").map(o => o.trim()).filter(Boolean)
-const metricsEnabled = TRUTHY.has(String(process.env.ENABLE_METRICS ?? "").toLowerCase())
+const metricsEnabled = TRUTHY.has(String(process.env.METRCIS_ENABLED ?? "").toLowerCase())
 const metricsHost = process.env.METRICS_HOST || "127.0.01"
 const metricsPort = Number(process.env.METRICS_PORT || 9100)
 const consoleIntervalMs = Number(process.env.CONSOLE_INTERVAL)
@@ -57,9 +58,7 @@ io.on('connection', (socket) => {
     registerHandlers({ io, socket, games, socketRooms })
 })
 
-httpServer.listen(PORT, () => {
-    return;
-})
+httpServer.listen(Number(WS_PORT), WS_HOST);
 
 
 startConsole({ io, games, phaseTimers, roundTimers, intervalMs: resolvedConsoleIntervalMs });
