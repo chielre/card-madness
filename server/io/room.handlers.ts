@@ -2,17 +2,22 @@ import { createGame, joinGame, leaveGame, givePlayerHand } from '../services/gam
 import { transitionPhase } from '../services/phaseService.js'
 import { startCzarPhase, startRoundFlow } from '../services/phaseFlowService.js'
 import { trackJoin, trackLeave } from '../services/socketRoomService.js'
-import { clearPhaseTimer, schedulePhaseTimer } from '../utils/phaseTimers.js'
-import { clearRoundTimer } from '../utils/roundTimers.js'
+
+import { phaseTimer, roundTimer } from '../utils/timers.js'
+
 import { PHASE_DEFAULT_DURATIONS } from '../config/phaseDurations.js'
 import { LOCK_BOOST_COOLDOWN_MS } from '../config/player.js'
 import { phaseTimers, roundTimers, selectionLockTimers } from '../state/store.js'
 import { emitPlayersUpdated } from './emitters.js'
 
+const phaseTimerService = phaseTimer()
+const roundTimerService = roundTimer()
+
 export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
     socket.on('room:create', ({ hostName, language }, cb) => {
         const trimmedName = (hostName ?? '').toString().trim()
         if (trimmedName.length > 25) return cb?.({ error: 'name_too_long' })
+
         const game = createGame({
             games,
             hostId: socket.id,
@@ -34,6 +39,7 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
     socket.on('room:join', async ({ lobbyId, name, language }, cb) => {
         const trimmedName = (name ?? '').toString().trim()
         if (trimmedName.length > 25) return cb?.({ error: 'name_too_long' })
+
         const game = joinGame({
             games,
             lobbyId,
@@ -52,10 +58,13 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
         trackJoin(socketRooms, socket.id, lobbyId)
 
         socket.to(lobbyId).emit('room:player-joined', { id: socket.id, name, ready: false, language, points: 0 })
+
         const currentRoundNumber = Number(game.currentRound) || 0
         const currentRound = currentRoundNumber ? game.rounds?.[currentRoundNumber] ?? null : null
-        const phaseTimer = phaseTimers.get(lobbyId)
-        const roundTimer = roundTimers.get(lobbyId)
+
+        const phaseTimerState = phaseTimers.get(lobbyId)
+        const roundTimerState = roundTimers.get(lobbyId)
+
         cb?.({
             lobbyId: lobbyId,
             phase: game.phase,
@@ -67,11 +76,11 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
             },
             currentRound,
             currentRoundNumber,
-            phaseTimerPhase: phaseTimer?.phase ?? '',
-            phaseTimerDurationMs: phaseTimer?.durationMs ?? 0,
-            phaseTimerExpiresAt: phaseTimer?.expiresAt ?? 0,
-            roundTimerDurationMs: roundTimer?.durationMs ?? 0,
-            roundTimerExpiresAt: roundTimer?.expiresAt ?? 0,
+            phaseTimerPhase: phaseTimerState?.phase ?? '',
+            phaseTimerDurationMs: phaseTimerState?.durationMs ?? 0,
+            phaseTimerExpiresAt: phaseTimerState?.expiresAt ?? 0,
+            roundTimerDurationMs: roundTimerState?.durationMs ?? 0,
+            roundTimerExpiresAt: roundTimerState?.expiresAt ?? 0,
         })
 
         const lockMap = selectionLockTimers.get(lobbyId)
@@ -100,8 +109,8 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
         if (res.hostChangedTo) io.to(lobbyId).emit('room:host-changed', { hostId: res.hostChangedTo })
 
         if (res.deleted) {
-            clearPhaseTimer(lobbyId)
-            clearRoundTimer(lobbyId)
+            phaseTimerService.clear(lobbyId)
+            roundTimerService.clear(lobbyId)
         }
 
         cb?.({ ok: true })
@@ -129,8 +138,8 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
         if (res.hostChangedTo) io.to(lobbyId).emit('room:host-changed', { hostId: res.hostChangedTo })
 
         if (res.deleted) {
-            clearPhaseTimer(lobbyId)
-            clearRoundTimer(lobbyId)
+            phaseTimerService.clear(lobbyId)
+            roundTimerService.clear(lobbyId)
         }
 
         cb?.({ ok: true })
@@ -139,10 +148,13 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
     socket.on('room:state', ({ lobbyId }, cb) => {
         const game = games.get(lobbyId)
         if (!game) return cb?.({ error: 'not_found' })
+
         const currentRoundNumber = Number(game.currentRound) || 0
         const currentRound = currentRoundNumber ? game.rounds?.[currentRoundNumber] ?? null : null
-        const phaseTimer = phaseTimers.get(lobbyId)
-        const roundTimer = roundTimers.get(lobbyId)
+
+        const phaseTimerState = phaseTimers.get(lobbyId)
+        const roundTimerState = roundTimers.get(lobbyId)
+
         cb?.({
             lobbyId: lobbyId,
             phase: game.phase,
@@ -154,22 +166,21 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
             },
             currentRound,
             currentRoundNumber,
-            phaseTimerPhase: phaseTimer?.phase ?? '',
-            phaseTimerDurationMs: phaseTimer?.durationMs ?? 0,
-            phaseTimerExpiresAt: phaseTimer?.expiresAt ?? 0,
-            roundTimerDurationMs: roundTimer?.durationMs ?? 0,
-            roundTimerExpiresAt: roundTimer?.expiresAt ?? 0,
+            phaseTimerPhase: phaseTimerState?.phase ?? '',
+            phaseTimerDurationMs: phaseTimerState?.durationMs ?? 0,
+            phaseTimerExpiresAt: phaseTimerState?.expiresAt ?? 0,
+            roundTimerDurationMs: roundTimerState?.durationMs ?? 0,
+            roundTimerExpiresAt: roundTimerState?.expiresAt ?? 0,
         })
     })
 
     socket.on('room:phase-set', ({ lobbyId, phase, durationMs, nextPhase }, cb) => {
         const game = games.get(lobbyId)
         if (!game) return cb?.({ error: 'not_found' })
-
         if (game.host !== socket.id) return cb?.({ error: 'not_host' })
 
-        clearPhaseTimer(lobbyId)
-        clearRoundTimer(lobbyId)
+        phaseTimerService.clear(lobbyId)
+        roundTimerService.clear(lobbyId)
 
         if (phase === 'starting' && (game.players?.length ?? 0) < 2) {
             return cb?.({ error: 'not_enough_players' })
@@ -187,9 +198,7 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
                 host: updated?.host ?? game.host,
                 players: updated?.players ?? game.players,
                 selectedPacks: updated?.selectedPacks ?? game.selectedPacks ?? [],
-                config: {
-                    lockBoostCooldownMs: LOCK_BOOST_COOLDOWN_MS,
-                },
+                config: { lockBoostCooldownMs: LOCK_BOOST_COOLDOWN_MS },
             })
         }
 
@@ -202,16 +211,14 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
                 host: updated?.host ?? game.host,
                 players: updated?.players ?? game.players,
                 selectedPacks: updated?.selectedPacks ?? game.selectedPacks ?? [],
-                config: {
-                    lockBoostCooldownMs: LOCK_BOOST_COOLDOWN_MS,
-                },
+                config: { lockBoostCooldownMs: LOCK_BOOST_COOLDOWN_MS },
             })
         }
 
         const res = transitionPhase({ games, io, lobbyId, to: phase })
         if (res.error) return cb?.(res)
 
-        const phaseTimer = schedulePhaseTimer({
+        const timer = phaseTimerService.schedule({
             io,
             lobbyId,
             phase: res.game.phase,
@@ -222,8 +229,9 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
                 transitionPhase({ games, io, lobbyId, to: nextPhase })
             },
         })
-        if (phaseTimer) {
-            io.to(lobbyId).emit('room:phase-timer', { phase: res.game.phase, ...phaseTimer })
+
+        if (timer) {
+            io.to(lobbyId).emit('room:phase-timer', { phase: res.game.phase, ...timer })
         }
 
         cb?.({
@@ -232,12 +240,7 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
             host: game.host,
             players: game.players,
             selectedPacks: game.selectedPacks ?? [],
-            config: {
-                lockBoostCooldownMs: LOCK_BOOST_COOLDOWN_MS,
-            },
+            config: { lockBoostCooldownMs: LOCK_BOOST_COOLDOWN_MS },
         })
-
     })
-
-
 }

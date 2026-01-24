@@ -1,9 +1,7 @@
 import logUpdate from 'log-update'
 import chalk from 'chalk'
-import logSymbols from 'log-symbols';
 
-
-export const startConsole = ({ io, games, phaseTimers, roundTimers, intervalMs = 500 }) => {
+export const startConsole = ({ io, games }) => {
     const startedAt = Date.now()
 
     const fmtUptime = (ms) => {
@@ -11,6 +9,7 @@ export const startConsole = ({ io, games, phaseTimers, roundTimers, intervalMs =
         const hh = String(Math.floor(s / 3600)).padStart(2, "0")
         const mm = String(Math.floor((s % 3600) / 60)).padStart(2, "0")
         const ss = String(s % 60).padStart(2, "0")
+
         return `${hh}:${mm}:${ss}`
     }
 
@@ -23,10 +22,9 @@ export const startConsole = ({ io, games, phaseTimers, roundTimers, intervalMs =
             `${chalk.green("●")} ${chalk.bold("Sockets")}: ${sockets}`,
             `${chalk.cyan("●")} ${chalk.bold("Lobbies")}: ${lobbies}`,
             `${chalk.yellow("●")} ${chalk.bold("Uptime")}: ${uptime}`,
-
         ].join("\n"))
     }
 
     updateConsole()
-    return setInterval(updateConsole, intervalMs)
+    return setInterval(updateConsole, 1000)
 }

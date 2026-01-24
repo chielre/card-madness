@@ -1,10 +1,15 @@
 import { nanoid } from 'nanoid'
 import { givePlayerHand, joinGame, selectPlayerCard, lockPlayerSelection, areAllNonSelectorPlayersSelected, selectCzarCard, finalizeRound } from './gameService.js'
 import { scheduleSelectionLockTimer, hasActiveSelectionLocks } from '../utils/selectionLockTimers.js'
-import { clearRoundTimer } from '../utils/roundTimers.js'
-import { clearPhaseTimer } from '../utils/phaseTimers.js'
+
+import { roundTimer, phaseTimer } from '../utils/timers.js'
+
 import { transitionPhase } from './phaseService.js'
 import { startCzarPhase } from './phaseFlowService.js'
+
+
+const roundTimerService = roundTimer();
+const phaseTimerService = phaseTimer();
 
 const BOT_LOOP_INTERVAL_MS = 500
 const BOT_LOCK_DELAY_MS = 1200
@@ -21,7 +26,7 @@ const tryStartCzarIfReady = ({ io, games, lobbyId }) => {
     if (!areAllNonSelectorPlayersSelected(gameNow)) return
     if (hasActiveSelectionLocks(lobbyId)) return
 
-    clearRoundTimer(lobbyId)
+    roundTimerService.clear(lobbyId)
     startCzarPhase({ io, games, lobbyId, round: gameNow.currentRound })
 }
 
@@ -83,7 +88,7 @@ const selectBotCzarCard = async ({ io, games, lobbyId, bot, round }) => {
         emitPlayerCardsUpdated(io, finalizeRes.game)
     }
 
-    clearPhaseTimer(lobbyId)
+    phaseTimerService.clear(lobbyId)
     transitionPhase({ games, io, lobbyId, to: 'czar-result' })
 }
 

@@ -1,8 +1,9 @@
 import { startResultsPhase, startRoundFlow } from '../services/phaseFlowService.js'
 import { transitionPhase } from '../services/phaseService.js'
-import { clearPhaseTimer } from '../utils/phaseTimers.js'
+import { phaseTimer } from '../utils/timers.js'
 import { finalizeRound, selectCzarCard } from '../services/gameService.js'
 
+const phaseTimerService = phaseTimer()
 
 export const registerRoundsHandlers = ({ io, socket, games, socketRooms }) => {
     socket.on('round:next', async ({ lobbyId }, cb) => {
@@ -21,13 +22,13 @@ export const registerRoundsHandlers = ({ io, socket, games, socketRooms }) => {
 
         const nextRound = currentRound + 1
         if (!game.rounds?.[nextRound]) {
-            clearPhaseTimer(lobbyId)
+            phaseTimerService.clear(lobbyId)
             const resultsRes = startResultsPhase({ io, games, lobbyId })
             if (resultsRes?.error) return cb?.(resultsRes)
             return cb?.({ ok: true, phase: 'results' })
         }
 
-        clearPhaseTimer(lobbyId)
+        phaseTimerService.clear(lobbyId)
         transitionPhase({ games, io, lobbyId, to: 'board' })
         const res = startRoundFlow({ io, games, lobbyId, round: nextRound })
         if (res && 'error' in res) return cb?.(res)
@@ -50,7 +51,7 @@ export const registerRoundsHandlers = ({ io, socket, games, socketRooms }) => {
                 io.to(player.id).emit("room:player-cards-updated", { cards: player.white_cards ?? [] })
             })
         }
-        clearPhaseTimer(lobbyId)
+        phaseTimerService.clear(lobbyId)
         transitionPhase({ games, io, lobbyId, to: 'czar-result' })
         cb?.({ ok: true })
     })

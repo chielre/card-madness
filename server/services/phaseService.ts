@@ -1,6 +1,8 @@
 import { resetGameForLobby, setPhase } from './gameService.js'
-import { clearRoundTimer, scheduleRoundTimer } from '../utils/roundTimers.js'
+import { roundTimer } from '../utils/timers.js'
 import { emitPlayersUpdated } from '../io/emitters.js'
+
+const roundTimerService = roundTimer()
 
 export const transitionPhase = ({ games, io, lobbyId, to }) => {
     const res = setPhase({ games, lobbyId, to })
@@ -10,9 +12,18 @@ export const transitionPhase = ({ games, io, lobbyId, to }) => {
 
     if (res.game.phase === 'board') {
         const round = Number(res.game.currentRound) || 1
-        scheduleRoundTimer({ io, lobbyId, round })
+
+        const roundTimerState = roundTimerService.schedule({
+            io,
+            lobbyId,
+            round,
+        })
+
+        if (roundTimerState) {
+            io.to(lobbyId).emit('board:round-timer', { round, ...roundTimerState })
+        }
     } else {
-        clearRoundTimer(lobbyId)
+        roundTimerService.clear(lobbyId)
     }
 
     if (res.game.phase === 'lobby') {
