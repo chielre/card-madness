@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import BaseButton from '@/components/ui/BaseButton.vue'
 import { useRouter } from 'vue-router'
@@ -7,6 +8,7 @@ import { useLobbyStore } from '@/store/LobbyStore'
 
 const lobby = useLobbyStore()
 const router = useRouter();
+const { locale } = useI18n()
 
 
 const nameInput = ref('')
@@ -24,7 +26,7 @@ const createLobby = async () => {
     if (!nameInput.value.trim()) return
     isCreating.value = true
     try {
-        const res = await lobby.createLobby(nameInput.value);
+        const res = await lobby.createLobby(nameInput.value, locale.value);
         if ((res as any)?.error === 'name_too_long') {
             errorMessage.value = 'Naam mag maximaal 25 tekens zijn.'
             return
@@ -57,12 +59,12 @@ onMounted(() => {
 
             <div v-if="!shouldSkipName" class="mt-4 bg-white border-4 border-b-8 rounded-xl border-black p-8 text-black">
                 <div class="text-black space-y-3">
-                    <input v-model="nameInput" type="text" class="border-4 text-xl font-black border-black rounded-xl px-4 py-2 w-full" placeholder="Your name" />
+                    <input v-model="nameInput" type="text" class="border-4 text-xl font-black border-black rounded-xl px-4 py-2 w-full" :placeholder="$t('your_name')" />
                 </div>
                 <p v-if="errorMessage" class="text-red-600">{{ errorMessage }}</p>
             </div>
             <div v-if="!shouldSkipName" class="flex mt-4">
-                <BaseButton :disabled="isCreating" @click="createLobby" size="lg">Create game</BaseButton>
+                <BaseButton :disabled="isCreating" @click="createLobby" size="lg">{{ $t('create_game') }}</BaseButton>
             </div>
         </div>
     </div>

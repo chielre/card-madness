@@ -181,7 +181,7 @@ export const useLobbyStore = defineStore('lobby', {
 
             this.players = this.players.filter((p) => p.id !== id)
         },
-        updatePlayer(id: string, data: Partial<{ name: string; ready: boolean; points: number }>) {
+        updatePlayer(id: string, data: Partial<{ name: string; ready: boolean; points: number; language: string }>) {
             const player = this.getPlayer(id)
             if (!player) return
 
@@ -315,6 +315,21 @@ export const useLobbyStore = defineStore('lobby', {
             }
 
             return res
+        },
+
+        async setPlayerLanguage(lobbyId: string, language: string) {
+            if (!lobbyId || !language) return
+            const conn = useConnectionStore()
+            try {
+                const socket = await conn.ensureSocket()
+                socket.emit('player:language', { lobbyId, language })
+            } catch {
+            }
+
+            const socketId = conn.getSocketSafe()?.id
+            if (socketId) {
+                this.updatePlayer(socketId, { language })
+            }
         },
 
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useConnectionStore } from '@/store/ConnectionStore'
 import { useLobbyStore } from '@/store/LobbyStore'
@@ -15,6 +16,7 @@ const connection = useConnectionStore()
 const lobby = useLobbyStore()
 const audio = useAudioStore()
 const ui = useUiStore()
+const { locale } = useI18n()
 
 const nameInput = ref('')
 const isLoading = ref(true)
@@ -71,7 +73,7 @@ const loadPlayers = async () => {
 const joinWithName = async () => {
     if (!nameInput.value.trim()) return
     try {
-        const res = await lobby.joinLobby(lobbyId, nameInput.value.trim())
+        const res = await lobby.joinLobby(lobbyId, nameInput.value.trim(), locale.value)
         if ((res as any)?.error === 'not_found') return roomNotFound()
         if ((res as any)?.error === 'name_too_long') {
             errorMessage.value = 'Naam mag maximaal 25 tekens zijn.'

@@ -7,6 +7,7 @@ import { registerHandlers } from './io/registerHandlers.js'
 import { startConsole } from './console.js'
 import { createMonitoring } from "./utils/monitoring.js";
 import { updatePacksOnStart } from "./services/PackService.js";
+// import { registerDebugRoutes } from "./debug/PackService.js";
 
 
 dotenv.config({ path: "../.env", quiet: true })
@@ -18,7 +19,7 @@ const environment = {
     WS_ORIGINS: process.env.SERVER_WS_ORIGINS?.split(",").map(o => o.trim()).filter(Boolean) || [""],
     METRICS_ENABLED: TRUTHY.has(String(process.env.METRCIS_ENABLED ?? "").toLowerCase()),
     METRICS_HOST: process.env.METRICS_HOST || "127.0.0.1",
-    METRICS_PORT: Number(process.env.METRICS_PORT || 9100)
+    METRICS_PORT: Number(process.env.METRICS_PORT || 9100),
 }
 
 

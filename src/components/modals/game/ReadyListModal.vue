@@ -3,6 +3,10 @@ import { computed, ref, nextTick, onBeforeUnmount } from "vue"
 import gsap from "gsap"
 import { CustomEase } from "gsap/CustomEase"
 
+import { useI18n } from 'vue-i18n'
+
+const { t, locale } = useI18n()
+
 import BaseButton from "@/components/ui/BaseButton.vue"
 import { useAudioStore } from "@/store/AudioStore"
 import { useLobbyStore } from "@/store/LobbyStore"
@@ -174,7 +178,7 @@ async function open() {
     pulse(cards, { startAt: 36, repeats: 14, every: 1, duration: 0.18, pickTwo: true })
 
     tl
-        .call(() => setReadyText("Haha, not yet!"), [], 50)
+        .call(() => setReadyText(t("everybody_ready_timeout")), [], 50)
         .call(() => playOutro(cards), [], 50)
         .call(() => {
             tl = null
@@ -200,14 +204,14 @@ defineExpose({ open, close, reset })
         <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
 
         <div ref="readyTextRef" class="fixed inset-0 scale-0 text-outline-black text-6xl text-white font-black flex items-center justify-center">
-            Everybody ready?
+            {{ $t('everybody_ready') }}
         </div>
 
         <div class="relative">
             <div ref="readyModal" class="z-10 relative bg-white border-4 border-b-8 border-black rounded-2xl max-w-xl w-full mx-4 p-6 text-black shadow-2xl scale-0">
-                <h3 class="text-2xl font-black text-center">Your game is ready</h3>
+                <h3 class="text-2xl font-black text-center">{{ $t('your_game_is_ready') }}</h3>
 
-                <p class="mt-4 text-lg leading-relaxed text-center">Press the button below make to it happen</p>
+                <p class="mt-4 text-lg leading-relaxed text-center">{{ $t('your_game_is_ready_description') }}</p>
 
                 <div class="mt-6 justify-between flex items-center bg-gray-50 rounded-xl p-6">
                     <div class="grid grid-cols-4 items-center gap-4 w-full">
@@ -218,7 +222,7 @@ defineExpose({ open, close, reset })
                 </div>
 
                 <div class="flex items-center justify-center mt-8">
-                    <BaseButton @click="setPlayerReady" v-if="!currentPlayer?.ready">I am ready</BaseButton>
+                    <BaseButton @click="setPlayerReady" v-if="!currentPlayer?.ready">{{ $t('i_am_ready') }}</BaseButton>
                 </div>
             </div>
 

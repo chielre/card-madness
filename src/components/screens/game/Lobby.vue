@@ -164,7 +164,7 @@ defineExpose({ openReadyModal, closeReadyModal })
                 <img class="" width="150" src="../../../assets/images/logo.png" alt="" />
                 <div class="flex gap-2 items-center">
 
-                    <div class="border-2 border-b-4 border-black bg-white text-black  px-3 rounded-full font-bold"><span class="font-black">{{ lobby.players.length }}</span> players</div>
+                    <div class="border-2 border-b-4 border-black bg-white text-black  px-3 rounded-full font-bold"><span class="font-black">{{ lobby.players.length }}</span> {{ $t('players') }}</div>
                 </div>
             </div>
 
@@ -195,7 +195,7 @@ defineExpose({ openReadyModal, closeReadyModal })
                                 Host
                             </div>
                             <div v-else-if="player.id === connection.getSocketSafe()?.id" class="text-sm font-black px-2 py-1 rounded-full bg-gray-200 text-black  border-4 border-b-8 border-black">
-                                You
+                                {{ $t("you") }}
                             </div>
 
                         </div>
@@ -205,7 +205,7 @@ defineExpose({ openReadyModal, closeReadyModal })
                 <div class="p-4 bg-gray-100 rounded-xl">
 
 
-                    <BaseButton class="w-full" size="sm" icon="ContentCopy" @click="copyLobbyLink">Copy link</BaseButton>
+                    <BaseButton class="w-full" size="sm" icon="ContentCopy" @click="copyLobbyLink">{{ $t('copy_link') }}</BaseButton>
                 </div>
             </div>
 
@@ -223,10 +223,10 @@ defineExpose({ openReadyModal, closeReadyModal })
                     </div>
                     <div class="mb-4 bg-black/50 p-4 rounded-xl text-white font-bold">
                         <div v-if="!selectedPackIds?.length || selectedPackIds.length <= 0">
-                            packs selected: <span class="underline">All packs</span>
+                            {{ $t('packs_selected') }}: <span class="underline">{{ $t('all_packs') }}</span>
                         </div>
                         <div v-else-if="selectedPackIds?.length > 0">
-                            packs selected: ({{ selectedPackIds.length ?? 0 }}/{{ resolvedPacks.length ?? 0 }})
+                            {{ $t('packs_selected') }}: ({{ selectedPackIds.length ?? 0 }}/{{ resolvedPacks.length ?? 0 }})
                         </div>
                     </div>
 
@@ -282,7 +282,7 @@ defineExpose({ openReadyModal, closeReadyModal })
 
 
                 <div v-if="lobby.getCurrentPlayerIsHost() || lobby.lobbyId == 'TEST01'">
-                    <BaseButton size="lg" @click="startGame">Start game</BaseButton>
+                    <BaseButton size="lg" @click="startGame">{{ $t('start_game') }}</BaseButton>
 
                 </div>
             </div>

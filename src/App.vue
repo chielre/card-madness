@@ -26,10 +26,6 @@ const hasJoined = computed(() =>
 )
 
 
-
-
-
-
 let firstInteracted = ref(false)
 const isPreloadingAudio = ref(false)
 const preloadProgress = ref(0)

@@ -25,6 +25,7 @@
         "tailwindcss": "^4.1.17",
         "tar": "^7.5.6",
         "vue": "^3.4.0",
+        "vue-i18n": "^11.2.8",
         "vue-material-design-icons": "^5.3.1",
         "vue-router": "^4.6.3"
     },

@@ -1,4 +1,4 @@
-import { setReady, selectPlayerCard, unselectPlayerCard, areAllNonSelectorPlayersSelected, lockPlayerSelection } from '../services/gameService.js'
+import { setReady, setPlayerLanguage, selectPlayerCard, unselectPlayerCard, areAllNonSelectorPlayersSelected, lockPlayerSelection } from '../services/gameService.js'
 import { emitPlayersUpdated } from './emitters.js'
 import { handleStartIntroFlow, startCzarPhase } from '../services/phaseFlowService.js'
 
@@ -44,6 +44,15 @@ export const registerPlayerHandlers = ({ io, socket, games }) => {
             handleStartIntroFlow({ io, socket, games, lobbyId, game: res.game })
         }
 
+        cb?.({ ok: true })
+    })
+
+    socket.on('player:language', ({ lobbyId, language }, cb) => {
+        if (!lobbyId) return cb?.({ error: 'invalid_payload' })
+        const res = setPlayerLanguage({ games, lobbyId, socketId: socket.id, language })
+        if (res.error) return cb?.({ error: res.error })
+
+        emitPlayersUpdated({ io, lobbyId, game: res.game })
         cb?.({ ok: true })
     })
 

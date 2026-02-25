@@ -35,8 +35,8 @@ const openLicense = () => {
             <!-- Topbar -->
             <img class="logo" width="300" src="../assets/images/logo.png" alt="">
             <div class="mt-16 flex flex-col gap-4">
-                <BaseButton @click="CreateLobby" size="lg">Create a lobby</BaseButton>
-                <BaseButton @click="JoinLobby" size="lg">Join lobby</BaseButton>
+                <BaseButton @click="CreateLobby" size="lg">{{ $t('create_lobby') }}</BaseButton>
+                <BaseButton @click="JoinLobby" size="lg">{{ $t('join_lobby') }}</BaseButton>
             </div>
 
             <div class="flex justify-between items-center mt-8">

@@ -250,6 +250,19 @@ export const setReady = ({ games, lobbyId, socketId, ready }) => {
     return { game, player }
 }
 
+export const setPlayerLanguage = ({ games, lobbyId, socketId, language }) => {
+    const game = games.get(lobbyId)
+    if (!game) return { error: 'not_found' }
+
+    const player = game.players.find(p => p.id === socketId)
+    if (!player) return { error: 'player_not_found' }
+
+    player.language = normalizeLanguage(language)
+    games.set(lobbyId, game)
+
+    return { game, player }
+}
+
 export const updatePacks = ({ games, lobbyId, packs }) => {
     const game = games.get(lobbyId)
     if (!game) return null
