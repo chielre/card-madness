@@ -7,10 +7,12 @@ const props = withDefaults(
     defineProps<{
         modelValue: ToggleValue;
         name?: string;
+        disabled?: boolean;
     }>(),
     {
         modelValue: "on",
         name: "toggle",
+        disabled: false,
     }
 );
 
@@ -20,21 +22,24 @@ const emit = defineEmits<{
 
 const value = computed({
     get: () => props.modelValue,
-    set: (v: ToggleValue) => emit("update:modelValue", v),
+    set: (v: ToggleValue) => {
+        if (props.disabled) return;
+        emit("update:modelValue", v);
+    },
 });
 </script>
 
 <template>
-    <div class="bg-white border-3 border-b-6 rounded-xl border-black grid grid-cols-2 p-1">
-        <label class="cursor-pointer text-center">
-            <input type="radio" :name="name" class="peer hidden" value="on" v-model="value" />
+    <div class="bg-white border-3 border-b-6 rounded-xl border-black grid grid-cols-2 p-1" :class="disabled ? 'opacity-50' : ''">
+        <label class="text-center" :class="disabled ? 'cursor-not-allowed' : 'cursor-pointer'">
+            <input type="radio" :name="name" class="peer hidden" value="on" v-model="value" :disabled="disabled" />
             <div class="peer-checked:bg-gray-300 rounded-lg font-bold font-roboto py-3 px-8  transition-all ease-in-out uppercase">
                 AAN
             </div>
         </label>
 
-        <label class="cursor-pointer text-center">
-            <input type="radio" :name="name" class="peer hidden" value="off" v-model="value" />
+        <label class="text-center" :class="disabled ? 'cursor-not-allowed' : 'cursor-pointer'">
+            <input type="radio" :name="name" class="peer hidden" value="off" v-model="value" :disabled="disabled" />
             <div class="peer-checked:bg-gray-300 rounded-lg font-bold font-roboto py-3 px-6 transition-all ease-in-out uppercase">
                 UIT
             </div>

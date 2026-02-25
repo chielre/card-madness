@@ -2,6 +2,7 @@ import { transitionPhase } from './phaseService.js'
 import {
   autoSelectCzarCard,
   autoSelectMissingPlayerCards,
+  ensureLobbySettings,
   finalizeRound,
   prepareGame,
   setRound,
@@ -98,11 +99,15 @@ export const startResultsPhase = ({ io, games, lobbyId }) => {
   return res
 }
 
-export const startRoundFlow = ({ io, games, lobbyId, round, durationMs = 90000 }) => {
+export const startRoundFlow = ({ io, games, lobbyId, round, durationMs = 0 }) => {
   clearSelectionLockTimers(lobbyId)
 
   const game = games.get(lobbyId)
   if (!game) return { error: 'not_found' }
+  const settings = ensureLobbySettings(game)
+  const resolvedRoundDurationMs = Number(durationMs) > 0
+    ? Number(durationMs)
+    : settings.roundTimeMs
   if (!game.rounds?.[round]) {
     return startResultsPhase({ io, games, lobbyId })
   }
@@ -125,7 +130,7 @@ export const startRoundFlow = ({ io, games, lobbyId, round, durationMs = 90000 }
     io,
     lobbyId,
     round: freshGame.currentRound,
-    durationMs,
+    durationMs: resolvedRoundDurationMs,
     onTimeout: () => {
       const waitForSelectionLocks = () => {
         const gameNow = games.get(lobbyId)
@@ -155,8 +160,8 @@ export const startRoundFlow = ({ io, games, lobbyId, round, durationMs = 90000 }
   io.to(lobbyId).emit('board:round-started', {
     currentRound: startedRound,
     roundNumber: freshGame.currentRound,
-    durationMs: roundTimerState?.durationMs ?? durationMs,
-    expiresAt: roundTimerState?.expiresAt ?? (Date.now() + durationMs),
+    durationMs: roundTimerState?.durationMs ?? resolvedRoundDurationMs,
+    expiresAt: roundTimerState?.expiresAt ?? (Date.now() + resolvedRoundDurationMs),
   })
 
   emitPlayersUpdated({ io, lobbyId, game: freshGame })
@@ -178,6 +183,10 @@ export const startCzarPhase = ({
 }) => {
   const game = games.get(lobbyId)
   if (!game) return
+  const settings = ensureLobbySettings(game)
+  const resolvedCzarDurationMs = Number(durationMs) > 0
+    ? Number(durationMs)
+    : settings.czarPickTimeMs
 
   clearSelectionLockTimers(lobbyId)
 
@@ -214,7 +223,7 @@ export const startCzarPhase = ({
     io,
     lobbyId,
     phase: 'czar',
-    durationMs: durationMs ?? PHASE_DEFAULT_DURATIONS.czar,
+    durationMs: resolvedCzarDurationMs,
     defaultDurations: PHASE_DEFAULT_DURATIONS,
     onTimeout: async () => {
       const autoPick = autoSelectCzarCard({ games, lobbyId })

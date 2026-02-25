@@ -1,6 +1,7 @@
 import { resetGameForLobby, setPhase } from './gameService.js'
 import { roundTimer } from '../utils/timers.js'
 import { emitPlayersUpdated } from '../io/emitters.js'
+import { clearSelectionLockTimers } from '../utils/selectionLockTimers.js'
 
 const roundTimerService = roundTimer()
 
@@ -27,6 +28,7 @@ export const transitionPhase = ({ games, io, lobbyId, to }) => {
     }
 
     if (res.game.phase === 'lobby') {
+        clearSelectionLockTimers(lobbyId)
         const resetRes = resetGameForLobby({ games, lobbyId })
         if (resetRes && !('error' in resetRes) && resetRes.game) {
             emitPlayersUpdated({ io, lobbyId, game: resetRes.game })

@@ -1,4 +1,11 @@
-import { createGame, joinGame, leaveGame, givePlayerHand } from '../services/gameService.js'
+import {
+    createGame,
+    joinGame,
+    leaveGame,
+    givePlayerHand,
+    ensureLobbySettings,
+    updateLobbySettings,
+} from '../services/gameService.js'
 import { transitionPhase } from '../services/phaseService.js'
 import { startCzarPhase, startRoundFlow } from '../services/phaseFlowService.js'
 import { trackJoin, trackLeave } from '../services/socketRoomService.js'
@@ -14,7 +21,7 @@ const phaseTimerService = phaseTimer()
 const roundTimerService = roundTimer()
 
 export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
-    socket.on('room:create', ({ hostName, language }, cb) => {
+    socket.on('room:create', ({ hostName, language, settings }, cb) => {
         const trimmedName = (hostName ?? '').toString().trim()
         if (trimmedName.length > 25) return cb?.({ error: 'name_too_long' })
 
@@ -22,8 +29,10 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
             games,
             hostId: socket.id,
             hostName: hostName,
-            language: language
+            language: language,
+            settings,
         })
+        const normalizedSettings = ensureLobbySettings(game)
 
         socket.join(game.lobbyId)
         trackJoin(socketRooms, socket.id, game.lobbyId)
@@ -32,7 +41,8 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
             lobbyId: game.lobbyId,
             phase: game.phase,
             host: game.host,
-            selectedPacks: game.selectedPacks
+            selectedPacks: game.selectedPacks,
+            settings: normalizedSettings,
         })
     })
 
@@ -40,12 +50,21 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
         const trimmedName = (name ?? '').toString().trim()
         if (trimmedName.length > 25) return cb?.({ error: 'name_too_long' })
 
+        const existing = games.get(lobbyId)
+        if (!existing) return cb?.({ error: 'not_found' })
+
+        const lobbySettings = ensureLobbySettings(existing)
+        if (!lobbySettings.keepLobbyOpen && existing.phase !== 'lobby') {
+            return cb?.({ error: 'lobby_closed' })
+        }
+
         const game = joinGame({
             games,
             lobbyId,
             player: { id: socket.id, name, ready: false, language },
         })
         if (!game) return cb?.({ error: 'not_found' })
+        const normalizedSettings = ensureLobbySettings(game)
 
         if (!['lobby', 'starting'].includes(game.phase)) {
             const dealRes = await givePlayerHand({ games, lobbyId, playerId: socket.id })
@@ -71,6 +90,7 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
             host: game.host,
             players: game.players,
             selectedPacks: game.selectedPacks ?? [],
+            settings: normalizedSettings,
             config: {
                 lockBoostCooldownMs: LOCK_BOOST_COOLDOWN_MS,
             },
@@ -148,6 +168,7 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
     socket.on('room:state', ({ lobbyId }, cb) => {
         const game = games.get(lobbyId)
         if (!game) return cb?.({ error: 'not_found' })
+        const normalizedSettings = ensureLobbySettings(game)
 
         const currentRoundNumber = Number(game.currentRound) || 0
         const currentRound = currentRoundNumber ? game.rounds?.[currentRoundNumber] ?? null : null
@@ -161,6 +182,7 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
             host: game.host,
             players: game.players,
             selectedPacks: game.selectedPacks ?? [],
+            settings: normalizedSettings,
             config: {
                 lockBoostCooldownMs: LOCK_BOOST_COOLDOWN_MS,
             },
@@ -174,10 +196,34 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
         })
     })
 
+    socket.on('room:settings-update', ({ lobbyId, settings }, cb) => {
+        if (!lobbyId || !settings || typeof settings !== 'object') {
+            return cb?.({ error: 'invalid_payload' })
+        }
+
+        const game = games.get(lobbyId)
+        if (!game) return cb?.({ error: 'not_found' })
+        if (game.host !== socket.id) return cb?.({ error: 'not_host' })
+        if (game.phase !== 'lobby') return cb?.({ error: 'invalid_phase' })
+
+        const res = updateLobbySettings({ games, lobbyId, settings })
+        if (res?.error) return cb?.(res)
+
+        io.to(lobbyId).emit('room:settings-updated', {
+            settings: res.settings,
+        })
+
+        cb?.({
+            ok: true,
+            settings: res.settings,
+        })
+    })
+
     socket.on('room:phase-set', ({ lobbyId, phase, durationMs, nextPhase }, cb) => {
         const game = games.get(lobbyId)
         if (!game) return cb?.({ error: 'not_found' })
         if (game.host !== socket.id) return cb?.({ error: 'not_host' })
+        const normalizedSettings = ensureLobbySettings(game)
 
         phaseTimerService.clear(lobbyId)
         roundTimerService.clear(lobbyId)
@@ -198,6 +244,7 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
                 host: updated?.host ?? game.host,
                 players: updated?.players ?? game.players,
                 selectedPacks: updated?.selectedPacks ?? game.selectedPacks ?? [],
+                settings: ensureLobbySettings(updated ?? game),
                 config: { lockBoostCooldownMs: LOCK_BOOST_COOLDOWN_MS },
             })
         }
@@ -211,6 +258,7 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
                 host: updated?.host ?? game.host,
                 players: updated?.players ?? game.players,
                 selectedPacks: updated?.selectedPacks ?? game.selectedPacks ?? [],
+                settings: ensureLobbySettings(updated ?? game),
                 config: { lockBoostCooldownMs: LOCK_BOOST_COOLDOWN_MS },
             })
         }
@@ -240,6 +288,7 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
             host: game.host,
             players: game.players,
             selectedPacks: game.selectedPacks ?? [],
+            settings: normalizedSettings,
             config: { lockBoostCooldownMs: LOCK_BOOST_COOLDOWN_MS },
         })
     })

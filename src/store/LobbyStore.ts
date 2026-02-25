@@ -3,6 +3,8 @@ import { useConnectionStore } from './ConnectionStore'
 import { resolveBlackCard, resolveWhiteCards } from "@/utils/cards"
 import router from '@/router'
 import { useUiStore } from './UiStore'
+import { DEFAULT_LOBBY_SETTINGS, normalizeLobbySettings } from '@/types/lobbySettings'
+import type { LobbySettings, LobbySettingsInput } from '@/types/lobbySettings'
 
 type WhiteCard = {
     pack: string,
@@ -35,7 +37,7 @@ export type SelectedCardEntry = {
     playerId: string
     card?: WhiteCard | null
     locked?: boolean
-    resolved?: { text?: string }
+    resolved?: { text?: string } | null
 }
 
 type Game = {
@@ -44,6 +46,7 @@ type Game = {
     players: Player[],
     phase: string,
     selectedPacks: [],
+    settings?: LobbySettingsInput,
     config?: {
         lockBoostCooldownMs?: number,
     },
@@ -63,11 +66,20 @@ const normalizePlayer = (player: Player) => ({
     points: Number(player.points) || 0,
 })
 
+const resetPlayerForLobby = (player: Player): Player => ({
+    ...player,
+    ready: false,
+    points: 0,
+    white_cards: [],
+    eligibleFromRound: 1,
+})
+
 export const useLobbyStore = defineStore('lobby', {
     state: () => ({
         lobbyId: '',
         players: [] as Player[],
         selectedPacks: [] as string[],
+        settings: { ...DEFAULT_LOBBY_SETTINGS } as LobbySettings,
         host: '' as string,
         phase: 'lobby' as string,
         phaseTimeoutTick: 0,
@@ -195,15 +207,49 @@ export const useLobbyStore = defineStore('lobby', {
             return this.getPlayer(id) !== null
         },
         setPhase(phase: string) {
+            const prev = this.phase
             this.phase = phase
+            if (phase === 'lobby' && prev !== 'lobby') {
+                this.resetGameRuntimeStateForLobby()
+            }
         },
-        async createLobby(hostName: string, language?: string) {
+        resetGameRuntimeStateForLobby() {
+            this.players = this.players.map(resetPlayerForLobby)
+            this.selectedPacks = []
+            this.currentRound = null
+            this.currentRoundNumber = 0
+            this.roundStartedTick = 0
+            this.roundTimerDurationMs = 0
+            this.roundTimerExpiresAt = 0
+            this.roundTimeoutTick = 0
+            this.pendingSelectedCard = null
+            this.pendingSelectedCardTick = 0
+            this.pendingUnselectedCard = null
+            this.pendingUnselectedCardTick = 0
+            this.pendingCzarSelectedEntry = null
+            this.pendingCzarSelectedTick = 0
+            this.lastSelectedCard = null
+            this.selectedCardAnimTick = 0
+            this.selectionLockDurationMs = 10000
+            this.selectionLockExpiresAt = 0
+            this.lastSelectionLockBoost = null
+            this.selectionLockBoostTick = 0
+            this.czarCursor = null
+            this.czarCursorTick = 0
+            this.phaseTimerPhase = ''
+            this.phaseTimerDurationMs = 0
+            this.phaseTimerExpiresAt = 0
+            this.phaseTimeoutTick = 0
+            this.lockBoostLastAt.clear()
+        },
+        async createLobby(hostName: string, language?: string, settings?: LobbySettingsInput) {
             const conn = useConnectionStore()
-            const res = await conn.emitWithAck<{ lobbyId?: string; selectedPacks?: string[]; error?: string }>('room:create', { hostName, language })
+            const res = await conn.emitWithAck<{ lobbyId?: string; selectedPacks?: string[]; settings?: LobbySettingsInput; error?: string }>('room:create', { hostName, language, settings })
             if (res?.error) return res
 
             this.lobbyId = res.lobbyId ?? ''
             this.selectedPacks = res.selectedPacks ?? []
+            this.settings = normalizeLobbySettings({ ...this.settings, ...(res.settings ?? {}) })
             return res
         },
 
@@ -212,6 +258,7 @@ export const useLobbyStore = defineStore('lobby', {
             this.lobbyId = res.lobbyId ?? this.lobbyId
             this.players = (res.players ?? []).map(normalizePlayer)
             this.selectedPacks = res.selectedPacks ?? []
+            this.settings = normalizeLobbySettings({ ...this.settings, ...(res.settings ?? {}) })
             this.host = res.host ?? ''
             this.phase = res.phase ?? this.phase
             if (res.config?.lockBoostCooldownMs != null) {
@@ -298,6 +345,26 @@ export const useLobbyStore = defineStore('lobby', {
             this.selectedPacks = packs
             const socket = await conn.ensureSocket()
             socket.emit('packs:update', { lobbyId, packs })
+        },
+
+        setLobbySettings(settings?: LobbySettingsInput) {
+            this.settings = normalizeLobbySettings({ ...this.settings, ...(settings ?? {}) })
+        },
+
+        async updateLobbySettings(lobbyId: string, settings: LobbySettingsInput) {
+            if (!lobbyId || !settings) return { error: 'invalid_payload' }
+
+            const conn = useConnectionStore()
+            const res = await conn.emitWithAck<{ ok?: boolean; settings?: LobbySettingsInput; error?: string }>(
+                'room:settings-update',
+                { lobbyId, settings }
+            )
+
+            if (!res?.error && res?.settings) {
+                this.settings = normalizeLobbySettings({ ...this.settings, ...(res.settings ?? {}) })
+            }
+
+            return res
         },
 
         async setReady(lobbyId: string, ready = true) {

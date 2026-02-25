@@ -16,6 +16,14 @@ export interface RoundState {
     playerSelectedCards: PlayerSelectedCardEntry[]
 }
 
+export interface LobbySettings {
+    keepLobbyOpen: boolean
+    roundTimeMs: number
+    czarPickTimeMs: number
+    roundCount: number
+    personalizeCards: boolean
+}
+
 export interface Room {
     lobbyId: string
     host: string
@@ -25,4 +33,5 @@ export interface Room {
     currentRound: number
     rounds: Record<number, RoundState>
     selectedPacks: string[]
+    settings: LobbySettings
 }

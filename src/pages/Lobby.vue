@@ -75,6 +75,10 @@ const joinWithName = async () => {
     try {
         const res = await lobby.joinLobby(lobbyId, nameInput.value.trim(), locale.value)
         if ((res as any)?.error === 'not_found') return roomNotFound()
+        if ((res as any)?.error === 'lobby_closed') {
+            errorMessage.value = 'Deze lobby is gesloten sinds de game gestart is.'
+            return
+        }
         if ((res as any)?.error === 'name_too_long') {
             errorMessage.value = 'Naam mag maximaal 25 tekens zijn.'
             return
@@ -123,6 +127,9 @@ const handleRoomKicked = (payload: { lobbyId?: string }) => {
         cancelText: 'Sluiten',
     })
     router.replace({ name: 'main' })
+}
+const handleRoomSettingsUpdated = (payload: { settings?: any }) => {
+    lobby.setLobbySettings(payload?.settings)
 }
 
 /*-----------------------------------
@@ -174,9 +181,10 @@ let phaseSyncQueued = false
 const activeRoundPhases = new Set(["board", "czar", "czar-result"])
 
 const schedulePhaseSync = async (nextPhase: string) => {
+    const shouldSyncLobbyReset = nextPhase === 'lobby'
     const needsRound = activeRoundPhases.has(nextPhase) && !lobby.currentRound
     const needsPlayer = !lobby.getCurrentPlayer()
-    if (!needsRound && !needsPlayer) return
+    if (!needsRound && !needsPlayer && !shouldSyncLobbyReset) return
     if (phaseSyncInFlight) {
         phaseSyncQueued = true
         return
@@ -254,12 +262,14 @@ onMounted(async () => {
     socket.on('room:player-left', handlePlayerLeft)
     socket.on('room:player-ready', handlePlayerReady)
     socket.on('room:player-cards-updated', handlePlayerCardsUpdated)
+    socket.on('room:host-changed', handleRoomHostUpdated)
 
     socket.on('room:players-changed', handlePlayersUpdated)
     socket.on('room:phase-changed', handleGamePhaseChange)
     socket.on('room:phase-timer', handleGamePhaseTimer)
     socket.on('room:phase-timeout', handleGamePhaseTimeout)
     socket.on('room:kicked', handleRoomKicked)
+    socket.on('room:settings-updated', handleRoomSettingsUpdated)
 
     socket.on('packs:updated', handlePacksUpdated)
 
@@ -287,18 +297,21 @@ onBeforeUnmount(() => {
     socket.off('room:player-joined', handlePlayerJoined)
     socket.off('room:player-left', handlePlayerLeft)
     socket.off('room:player-ready', handlePlayerReady)
-    socket.off('player:player-cards-updated', handlePlayerCardsUpdated)
+    socket.off('room:player-cards-updated', handlePlayerCardsUpdated)
+    socket.off('room:host-changed', handleRoomHostUpdated)
 
     socket.off('room:players-changed', handlePlayersUpdated)
     socket.off('room:phase-changed', handleGamePhaseChange)
     socket.off('room:phase-timer', handleGamePhaseTimer)
     socket.off('room:phase-timeout', handleGamePhaseTimeout)
     socket.off('room:kicked', handleRoomKicked)
+    socket.off('room:settings-updated', handleRoomSettingsUpdated)
 
     socket.off('packs:updated', handlePacksUpdated)
 
     socket.off('board:round-updated', handleBoardRoundUpdated)
     socket.off('board:round-started', handleBoardRoundStarted)
+    socket.off('board:round-timeout', handleBoardRoundTimeout)
     socket.off('board:player-card-selected', handleBoardPlayerCardSelected)
     socket.off('board:player-card-unselected', handleBoardPlayerCardUnselected)
     socket.off('board:player-card-locked', handleBoardPlayerCardLocked)

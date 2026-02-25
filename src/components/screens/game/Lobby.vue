@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { computed, ref, watch, nextTick, onBeforeUnmount } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 
 
 import { useLobbyStore } from '@/store/LobbyStore'
 import { useAudioStore } from '@/store/AudioStore'
 import { useConnectionStore } from '@/store/ConnectionStore'
 import { useUiStore } from '@/store/UiStore'
+import { LOBBY_SETTINGS_LIMITS, normalizeLobbySettings } from '@/types/lobbySettings'
+import type { LobbySettings } from '@/types/lobbySettings'
 
 
 import { resolvePacks } from "@/utils/packs"
-import { strLimit } from "@/utils/str"
 
 import Close from 'vue-material-design-icons/Close.vue';
 
@@ -18,6 +20,7 @@ import Tabs from "@/components/Tabs.vue"
 import Tab from "@/components/Tab.vue"
 import ToggleSwitch from "@/components/ui/ToggleSwitch.vue"
 import BaseButton from "@/components/ui/BaseButton.vue"
+import BaseSelect from "@/components/ui/BaseSelect.vue"
 import CardPack from '@/components/CardPack.vue'
 
 import ReadyListModal from '@/components/modals/game/ReadyListModal.vue'
@@ -27,13 +30,86 @@ const lobby = useLobbyStore()
 const audio = useAudioStore()
 const ui = useUiStore()
 const connection = useConnectionStore()
+const router = useRouter()
 
 const readyModalRef = ref<InstanceType<typeof ReadyListModal> | null>(null)
 const packInfoModalRef = ref<InstanceType<typeof PackInfoModal> | null>(null)
 const currentMusicPackId = ref<string | null>(null)
+const lobbySettings = ref<LobbySettings>(normalizeLobbySettings(lobby.settings))
 
 const selectedPackIds = computed(() => lobby.selectedPacks)
 const resolvedPacks = computed(() => resolvePacks())
+const canEditSettings = computed(() => lobby.getCurrentPlayerIsHost() && lobby.phase === 'lobby')
+const roundTimeMinSeconds = Math.round(LOBBY_SETTINGS_LIMITS.roundTimeMinMs / 1000)
+const roundTimeMaxSeconds = Math.round(LOBBY_SETTINGS_LIMITS.roundTimeMaxMs / 1000)
+const czarPickMinSeconds = Math.round(LOBBY_SETTINGS_LIMITS.czarPickTimeMinMs / 1000)
+const czarPickMaxSeconds = Math.round(LOBBY_SETTINGS_LIMITS.czarPickTimeMaxMs / 1000)
+const roundCountMin = LOBBY_SETTINGS_LIMITS.roundCountMin
+const roundCountMax = LOBBY_SETTINGS_LIMITS.roundCountMax
+
+const toggleToBool = (value: 'on' | 'off') => value === 'on'
+const boolToToggle = (value: boolean): 'on' | 'off' => value ? 'on' : 'off'
+const formatSeconds = (ms: number) => `${Math.round(ms / 1000)}s`
+
+type SelectOption = {
+    value: number
+    label: string
+}
+
+const buildSteppedOptions = ({
+    min,
+    max,
+    step,
+    current,
+    label,
+}: {
+    min: number
+    max: number
+    step: number
+    current: number
+    label: (value: number) => string
+}): SelectOption[] => {
+    const options: SelectOption[] = []
+    const normalizedStep = Math.max(1, Math.round(step))
+    const start = min
+
+    for (let value = start; value <= max; value += normalizedStep) {
+        options.push({ value, label: label(value) })
+    }
+
+    if (!options.some((option) => option.value === max)) {
+        options.push({ value: max, label: label(max) })
+    }
+
+    if (!options.some((option) => option.value === current)) {
+        options.push({ value: current, label: label(current) })
+    }
+
+    return options.sort((a, b) => a.value - b.value)
+}
+
+const buildRangeOptions = ({
+    min,
+    max,
+    current,
+    label,
+}: {
+    min: number
+    max: number
+    current: number
+    label: (value: number) => string
+}): SelectOption[] => {
+    const options: SelectOption[] = []
+    for (let value = min; value <= max; value += 1) {
+        options.push({ value, label: label(value) })
+    }
+
+    if (!options.some((option) => option.value === current)) {
+        options.push({ value: current, label: label(current) })
+    }
+
+    return options.sort((a, b) => a.value - b.value)
+}
 
 type PackFilter = 'nsfw'
 
@@ -99,6 +175,86 @@ const startGame = async () => {
     await connection.emitWithAck('room:phase-set', { lobbyId: lobby.lobbyId, phase: 'starting' })
 }
 
+const applyLobbySettings = async (partial: Partial<LobbySettings>) => {
+    const next = normalizeLobbySettings({
+        ...lobbySettings.value,
+        ...partial,
+    })
+
+    lobbySettings.value = next
+    lobby.setLobbySettings(next)
+
+    if (!canEditSettings.value || !lobby.lobbyId) return
+    const res = await lobby.updateLobbySettings(lobby.lobbyId, partial)
+    if (!res?.error && res?.settings) {
+        lobbySettings.value = normalizeLobbySettings(res.settings)
+    }
+}
+
+const keepLobbyOpenToggle = computed<'on' | 'off'>({
+    get: () => boolToToggle(lobbySettings.value.keepLobbyOpen),
+    set: (value) => {
+        void applyLobbySettings({ keepLobbyOpen: toggleToBool(value) })
+    },
+})
+
+const personalizeCardsToggle = computed<'on' | 'off'>({
+    get: () => boolToToggle(lobbySettings.value.personalizeCards),
+    set: (value) => {
+        void applyLobbySettings({ personalizeCards: toggleToBool(value) })
+    },
+})
+
+const roundTimeOptions = computed<SelectOption[]>(() => buildSteppedOptions({
+    min: LOBBY_SETTINGS_LIMITS.roundTimeMinMs,
+    max: LOBBY_SETTINGS_LIMITS.roundTimeMaxMs,
+    step: 30_000,
+    current: lobbySettings.value.roundTimeMs,
+    label: (value) => formatSeconds(value),
+}))
+
+const czarPickTimeOptions = computed<SelectOption[]>(() => buildSteppedOptions({
+    min: LOBBY_SETTINGS_LIMITS.czarPickTimeMinMs,
+    max: LOBBY_SETTINGS_LIMITS.czarPickTimeMaxMs,
+    step: 30_000,
+    current: lobbySettings.value.czarPickTimeMs,
+    label: (value) => formatSeconds(value),
+}))
+
+const roundCountOptions = computed<SelectOption[]>(() => buildRangeOptions({
+    min: roundCountMin,
+    max: roundCountMax,
+    current: lobbySettings.value.roundCount,
+    label: (value) => `${value}`,
+}))
+
+const selectedRoundTimeMs = computed<number>({
+    get: () => lobbySettings.value.roundTimeMs,
+    set: (value) => {
+        const next = Number(value)
+        if (!Number.isFinite(next)) return
+        void applyLobbySettings({ roundTimeMs: Math.round(next) })
+    },
+})
+
+const selectedCzarPickTimeMs = computed<number>({
+    get: () => lobbySettings.value.czarPickTimeMs,
+    set: (value) => {
+        const next = Number(value)
+        if (!Number.isFinite(next)) return
+        void applyLobbySettings({ czarPickTimeMs: Math.round(next) })
+    },
+})
+
+const selectedRoundCount = computed<number>({
+    get: () => lobbySettings.value.roundCount,
+    set: (value) => {
+        const next = Number(value)
+        if (!Number.isFinite(next)) return
+        void applyLobbySettings({ roundCount: Math.round(next) })
+    },
+})
+
 const openPackInfo = (packId: string) => {
     packInfoModalRef.value?.open(packId)
 }
@@ -129,6 +285,14 @@ const kickPlayer = async (playerId: string) => {
 }
 
 watch(selectedPackIds, () => syncPackSelection(), { immediate: true })
+
+watch(
+    () => lobby.settings,
+    (settings) => {
+        lobbySettings.value = normalizeLobbySettings(settings)
+    },
+    { deep: true, immediate: true }
+)
 
 watch(
     () => lobby.phase,
@@ -247,9 +411,9 @@ defineExpose({ openReadyModal, closeReadyModal })
                                 <div class="flex flex-col gap-4 items-start">
                                     <div>
                                         <h2 class="font-bold text-xl">Lobby blijft open</h2>
-                                        <p class="mt-2">Spelers kunnen blijven joinen nadat de game is gestart. Wel zo handig als iemand er uit donderd.</p>
+                                        <p class="mt-2">Als dit uit staat kunnen nieuwe spelers niet meer joinen zodra de game start.</p>
                                     </div>
-                                    <!-- <ToggleSwitch class="mt-2" name="sound-toggle2" /> -->
+                                    <ToggleSwitch class="mt-2" name="lobby-open-setting" v-model="keepLobbyOpenToggle" :disabled="!canEditSettings" />
                                 </div>
                             </div>
                         </Tab>
@@ -258,21 +422,46 @@ defineExpose({ openReadyModal, closeReadyModal })
                             <div class="space-y-6">
                                 <div class="flex flex-col gap-4 items-start">
                                     <div>
-                                        <div class="flex items-center gap-2">
-                                            <h2 class="font-bold text-xl">Personaliseer kaarten</h2>
-                                            <div class="font-bold border-2 border-b-4 rounded-full px-2 py-0.5 text-xs">Onze keuze</div>
-                                        </div>
-
-                                        <p class="mt-2">Gebruik namen van spelers in deze lobby in beschikbare kaarten. Om je game een vleugje persoonlijkheid te geven!</p>
+                                        <h2 class="font-bold text-xl">Ronde tijd</h2>
+                                        <p class="mt-2">{{ formatSeconds(lobbySettings.roundTimeMs) }} ({{ roundTimeMinSeconds }}s - {{ roundTimeMaxSeconds }}s)</p>
                                     </div>
-                                    <!-- <ToggleSwitch class="mt-2" name="sound-toggle" /> -->
+                                    <BaseSelect
+                                        v-model="selectedRoundTimeMs"
+                                        :options="roundTimeOptions"
+                                        :disabled="!canEditSettings"
+                                        name="round-time-setting"
+                                    />
                                 </div>
                                 <div class="flex flex-col gap-4 items-start">
                                     <div>
-                                        <h2 class="font-bold text-xl">Scoreboard</h2>
-                                        <p class="mt-2">Laat een scoreboard voor, na en tijdens een spel zien. Beetje competitie kan geen kwaad! Toch?</p>
+                                        <h2 class="font-bold text-xl">Czar kiestijd</h2>
+                                        <p class="mt-2">{{ formatSeconds(lobbySettings.czarPickTimeMs) }} ({{ czarPickMinSeconds }}s - {{ czarPickMaxSeconds }}s)</p>
                                     </div>
-                                    <!-- <ToggleSwitch class="mt-2" name="sound-toggle2" /> -->
+                                    <BaseSelect
+                                        v-model="selectedCzarPickTimeMs"
+                                        :options="czarPickTimeOptions"
+                                        :disabled="!canEditSettings"
+                                        name="czar-pick-time-setting"
+                                    />
+                                </div>
+                                <div class="flex flex-col gap-4 items-start">
+                                    <div>
+                                        <h2 class="font-bold text-xl">Aantal rondes</h2>
+                                        <p class="mt-2">{{ lobbySettings.roundCount }} ({{ roundCountMin }} - {{ roundCountMax }})</p>
+                                    </div>
+                                    <BaseSelect
+                                        v-model="selectedRoundCount"
+                                        :options="roundCountOptions"
+                                        :disabled="!canEditSettings"
+                                        name="round-count-setting"
+                                    />
+                                </div>
+                                <div class="flex flex-col gap-4 items-start">
+                                    <div>
+                                        <h2 class="font-bold text-xl">Personaliseer kaarten</h2>
+                                        <p class="mt-2">Uit = gebruik een voorgedefinieerde namenlijst in plaats van spelersnamen.</p>
+                                    </div>
+                                    <ToggleSwitch class="mt-2" name="personalize-cards-setting" v-model="personalizeCardsToggle" :disabled="!canEditSettings" />
                                 </div>
                             </div>
                         </Tab>

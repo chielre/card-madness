@@ -9,6 +9,7 @@ import {
     pickFairWhiteCard
 } from '../utils/cards.js'
 import { POINTS_CZAR_PICKED, POINTS_CZAR_SELECT } from '../config/points.js'
+import { normalizeLobbySettings } from '../config/lobbySettings.js'
 
 const MAX_PLAYER_NAME_LENGTH = 25
 const normalizeName = (name) => (name ?? '').toString().trim()
@@ -25,19 +26,49 @@ const createUniqueLobbyCode = (games) => {
     }
     return code
 }
-const randomPlayerLobbyName = (players) => players[rand(players.length)]?.name ?? ""
+const DEFAULT_CARD_NAME_POOL = [
+    'Alex',
+    'Sam',
+    'Jamie',
+    'Taylor',
+    'Jordan',
+    'Riley',
+    'Morgan',
+    'Casey',
+    'Robin',
+    'Avery',
+]
 const countNameSlots = (text) => (text?.match(/:name/g) ?? []).length
-const pickRandomLobbyNames = (players, count) =>
-    Array.from({ length: count }, () => randomPlayerLobbyName(players))
+const buildCardNamePool = (game) => {
+    const settings = normalizeLobbySettings(game?.settings)
+    if (!settings.personalizeCards) return DEFAULT_CARD_NAME_POOL
+
+    const playerNames = (game?.players ?? [])
+        .map((player) => normalizeName(player?.name))
+        .filter(Boolean)
+
+    return playerNames.length ? playerNames : DEFAULT_CARD_NAME_POOL
+}
+const pickRandomLobbyNames = (pool, count) =>
+    Array.from({ length: count }, () => pool[rand(pool.length)] ?? DEFAULT_CARD_NAME_POOL[0])
 const getWhiteCardText = (pack, cardId, language) => getPackCards(pack, language)?.white?.[cardId] ?? ""
 const getBlackCardText = (pack, cardId, language) => getPackCards(pack, language)?.black?.[cardId] ?? ""
-const buildCardNames = (players, text) => {
+const buildCardNames = (game, text) => {
     const slotCount = countNameSlots(text)
     if (!slotCount) return []
-    return pickRandomLobbyNames(players, slotCount)
+    const namePool = buildCardNamePool(game)
+    return pickRandomLobbyNames(namePool, slotCount)
 }
 
-export const createGame = ({ games, hostId, hostName, language }) => {
+export const ensureLobbySettings = (game) => {
+    const settings = normalizeLobbySettings(game?.settings)
+    if (game) {
+        game.settings = settings
+    }
+    return settings
+}
+
+export const createGame = ({ games, hostId, hostName, language, settings }) => {
     const normalizedHostName = normalizeName(hostName)
     const hostLanguage = normalizeLanguage(language)
     const lobbyId = createUniqueLobbyCode(games)
@@ -58,6 +89,7 @@ export const createGame = ({ games, hostId, hostName, language }) => {
         currentRound: 0,
         rounds: {},
         selectedPacks: [],
+        settings: normalizeLobbySettings(settings),
 
     }
     games.set(lobbyId, game)
@@ -81,17 +113,16 @@ const isPlayerEligibleForRound = (player, roundNumber) =>
 export const prepareGame = async ({ games, lobbyId }) => {
     const game = games.get(lobbyId)
     if (!game) return { error: "not_found" }
+    const settings = ensureLobbySettings(game)
 
     if (!game.selectedPacks || !game.selectedPacks.length) {
         game.selectedPacks = getPacks().map(p => p.id)
     }
 
-
-
-    // 1) Create 4 default rounds
-    game.rounds = game.rounds ?? {}
-    for (let r = 1; r <= 5; r++) {
-        if (!game.rounds[r]) game.rounds[r] = {
+    // 1) Create configured amount of rounds
+    game.rounds = {}
+    for (let r = 1; r <= settings.roundCount; r++) {
+        game.rounds[r] = {
             cardSelector: { player: null, selectedCard: {} },
             blackCard: null,
             playerSelectedCards: [],
@@ -143,7 +174,7 @@ export const givePlayersWhiteCards = async ({ games, lobbyId, handSize = 5, uniq
             if (!picked) return { error: "not_enough_white_cards" }
 
             const text = getWhiteCardText(picked.pack, picked.card_id, getGameLanguage(game))
-            const names = buildCardNames(game.players, text)
+            const names = buildCardNames(game, text)
             player.white_cards.push(names.length ? { ...picked, names } : { ...picked })
             if (uniquePerGame) used.add(keyOf(picked))
         }
@@ -185,7 +216,7 @@ export const givePlayerOneWhiteCard = async ({ games, lobbyId, playerId, uniqueP
     if (!picked) return { error: "not_enough_white_cards" }
 
     const text = getWhiteCardText(picked.pack, picked.card_id, getGameLanguage(game))
-    const names = buildCardNames(game.players, text)
+    const names = buildCardNames(game, text)
     const card = names.length ? { ...picked, names } : { ...picked }
 
     player.white_cards.push(card)
@@ -261,6 +292,22 @@ export const setPlayerLanguage = ({ games, lobbyId, socketId, language }) => {
     games.set(lobbyId, game)
 
     return { game, player }
+}
+
+export const updateLobbySettings = ({ games, lobbyId, settings }) => {
+    const game = games.get(lobbyId)
+    if (!game) return { error: 'not_found' }
+
+    const currentSettings = ensureLobbySettings(game)
+    const nextSettings = normalizeLobbySettings({
+        ...currentSettings,
+        ...(settings ?? {}),
+    })
+
+    game.settings = nextSettings
+    games.set(lobbyId, game)
+
+    return { game, settings: nextSettings }
 }
 
 export const updatePacks = ({ games, lobbyId, packs }) => {
@@ -355,7 +402,7 @@ export const prepareRound = ({ games, lobbyId, round }) => {
     if (!uniqueBlackCard) return { error: "no_black_cards_left" }
 
     const blackText = getBlackCardText(uniqueBlackCard.pack, uniqueBlackCard.card_id, getGameLanguage(game))
-    const blackNames = buildCardNames(game.players, blackText)
+    const blackNames = buildCardNames(game, blackText)
     targetRound.blackCard = blackNames.length
         ? { ...uniqueBlackCard, names: blackNames }
         : uniqueBlackCard
@@ -616,7 +663,7 @@ export const givePlayerHand = async ({ games, lobbyId, playerId, handSize = 5, u
         if (!picked) return { error: "not_enough_white_cards" }
 
         const text = getWhiteCardText(picked.pack, picked.card_id, getGameLanguage(game))
-        const names = buildCardNames(game.players, text)
+        const names = buildCardNames(game, text)
         player.white_cards.push(names.length ? { ...picked, names } : { ...picked })
         if (uniquePerGame) used.add(keyOf(picked))
     }
@@ -676,6 +723,7 @@ export const resetGameForLobby = ({ games, lobbyId }) => {
     const game = games.get(lobbyId)
     if (!game) return { error: "not_found" }
 
+    game.settings = ensureLobbySettings(game)
     game.currentRound = null
     game.rounds = null
     game.selectedPacks = []
