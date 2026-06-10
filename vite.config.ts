@@ -11,6 +11,7 @@ export default defineConfig(({ mode }) => {
         base: '/card-madness/',
         define: {
             'import.meta.env.STAGE': JSON.stringify(env.STAGE),
+            'import.meta.env.SKIP_MAKER_INTRO': JSON.stringify(env.SKIP_MAKER_INTRO),
             'import.meta.env.DEV_SKIP_INTRO': JSON.stringify(env.DEV_SKIP_INTRO),
             'import.meta.env.DEV_SKIP_MUSIC_PRELOAD': JSON.stringify(env.DEV_SKIP_MUSIC_PRELOAD),
             'import.meta.env.DEV_SKIP_NAME': JSON.stringify(env.DEV_SKIP_NAME),
