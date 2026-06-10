@@ -16,19 +16,19 @@
 A **mad** HTML5 multiplayer card game based on Card Against Humanity. Built in **Vue 3**, **GSAP**, **Node.js** and **Socket.IO**.
 
 > [!IMPORTANT]
-> Card Madness is currently under active development. While this notice is present, Card Madness may not run reliably on your machine.
+> Card Madness is currently under active development. Our current focus is on making the repository easy to install on other devices. Please open an issue if you encouter problems.
  
 ## Why?
-So far, I haven’t found a good, modern, and easy way to play Cards Against Humanity with friends online. Existing solutions require you to register, pay, or are limited in the features they offer. That’s why I decided to contribute to the open-source community by building a fun game that does exactly what it promises, for free.
+So far, I haven’t found a good, modern, and easy way to play Cards Against Humanity with friends online. Existing solutions require you to register, pay, or are limited in the features they offer. That’s why I decided to build another clone that does exactly what it promises, for free.
 
 ## Planned features
 
 - Create and join lobbies without registration ✅
-- Pre-configured packs and [community driven packs](https://github.com/chielre/card-madness-packs) ✅
-- Lobby settings (rounds, white cards etc.) ❌
+- [Community driven card packs](https://github.com/chielre/card-madness-packs) ✅
+- Lobby settings (rounds, white cards etc.) ✅
 - Personalised black & white cards based on player names ✅
 - Scoreboard and game results ✅
-- Audience selection ❌
+- Audience selection ✅
 - Multi language gameplay ❌
 - First CZAR selection following the official rules (and more)❌
 
