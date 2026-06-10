@@ -1,4 +1,4 @@
-import { setReady, setPlayerLanguage, selectPlayerCard, unselectPlayerCard, areAllNonSelectorPlayersSelected, lockPlayerSelection } from '../services/gameService.js'
+import { setReady, setPlayerLanguage, selectPlayerCard, unselectPlayerCard, areAllNonSelectorPlayersSelected, lockPlayerSelection, swapPlayerCard } from '../services/gameService.js'
 import { emitPlayersUpdated } from './emitters.js'
 import { handleStartIntroFlow, startCzarPhase } from '../services/phaseFlowService.js'
 
@@ -87,6 +87,19 @@ export const registerPlayerHandlers = ({ io, socket, games }) => {
 
         io.to(lobbyId).emit('board:player-card-unselected', { playerId: res.playerSelectedCard.playerId })
         clearSelectionLockTimer({ lobbyId, playerId: res.playerSelectedCard.playerId })
+        cb?.({ ok: true })
+    })
+
+    socket.on('player:card-swap', async ({ lobbyId, card }, cb) => {
+        const res = await swapPlayerCard({ games, lobbyId, playerId: socket.id, card })
+        if (res.error) return cb?.({ error: res.error })
+
+        // refresh the swapping player's hand with the replacement card
+        io.to(socket.id).emit('room:player-cards-updated', { cards: res.player?.white_cards ?? [] })
+        // broadcast updated points so every live scoreboard reflects the cost
+        emitPlayersUpdated({ io, lobbyId, game: res.game })
+        // notify everyone who swapped so the scoreboard can flash a transient label
+        io.to(lobbyId).emit('player:card-swapped', { playerId: socket.id })
         cb?.({ ok: true })
     })
 

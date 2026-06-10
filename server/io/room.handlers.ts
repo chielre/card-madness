@@ -7,7 +7,7 @@ import {
     updateLobbySettings,
 } from '../services/gameService.js'
 import { transitionPhase } from '../services/phaseService.js'
-import { startCzarPhase, startRoundFlow } from '../services/phaseFlowService.js'
+import { startCzarPhase, startRoundFlow, startNextTurn } from '../services/phaseFlowService.js'
 import { trackJoin, trackLeave } from '../services/socketRoomService.js'
 
 import { phaseTimer, roundTimer } from '../utils/timers.js'
@@ -96,6 +96,7 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
             },
             currentRound,
             currentRoundNumber,
+            gameRound: Number(game.gameRound) || 0,
             phaseTimerPhase: phaseTimerState?.phase ?? '',
             phaseTimerDurationMs: phaseTimerState?.durationMs ?? 0,
             phaseTimerExpiresAt: phaseTimerState?.expiresAt ?? 0,
@@ -188,6 +189,7 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
             },
             currentRound,
             currentRoundNumber,
+            gameRound: Number(game.gameRound) || 0,
             phaseTimerPhase: phaseTimerState?.phase ?? '',
             phaseTimerDurationMs: phaseTimerState?.durationMs ?? 0,
             phaseTimerExpiresAt: phaseTimerState?.expiresAt ?? 0,
@@ -234,8 +236,15 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
 
         if (phase === 'board') {
             const currentRound = Number(game.currentRound) || 0
-            const nextRound = game.phase === 'czar-result' ? currentRound + 1 : Math.max(1, currentRound || 1)
-            const res = startRoundFlow({ io, games, lobbyId, round: nextRound, durationMs })
+            // From czar-result (or a not-yet-started game) advance to the next turn;
+            // otherwise re-run the current turn (resync) keeping the same czar.
+            let res
+            if (game.phase === 'czar-result' || currentRound === 0) {
+                res = startNextTurn({ io, games, lobbyId, durationMs })
+            } else {
+                const czarId = game.rounds?.[currentRound]?.cardSelector?.player ?? null
+                res = startRoundFlow({ io, games, lobbyId, round: currentRound, czarId, durationMs })
+            }
             if (res && 'error' in res) return cb?.(res)
             const updated = games.get(lobbyId)
             return cb?.({

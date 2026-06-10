@@ -22,6 +22,8 @@ type Player = {
     ready?: boolean
     eligibleFromRound?: number
     points?: number
+    pointsLost?: number
+    pointsLostThisRound?: number
 }
 
 type RoundState = {
@@ -32,6 +34,37 @@ type RoundState = {
     blackCard: any
     playerSelectedCards: { playerId: string; card?: WhiteCard | null; locked?: boolean }[]
 }
+
+// Mirror of POINTS_CARD_SWAP_COST on the server: a card swap costs this many points.
+export const CARD_SWAP_COST = 1
+
+export type CzarRatingVote = 'up' | 'down'
+
+export type CzarRatingState = {
+    active: boolean
+    durationMs: number
+    expiresAt: number
+    votes: Record<string, CzarRatingVote>
+    up: number
+    down: number
+    resolved: boolean
+    result: 'win' | 'lose' | 'tie' | null
+    bonus: number
+    myVote: CzarRatingVote | null
+}
+
+const emptyCzarRating = (): CzarRatingState => ({
+    active: false,
+    durationMs: 0,
+    expiresAt: 0,
+    votes: {},
+    up: 0,
+    down: 0,
+    resolved: false,
+    result: null,
+    bonus: 0,
+    myVote: null,
+})
 
 export type SelectedCardEntry = {
     playerId: string
@@ -52,6 +85,7 @@ type Game = {
     },
     currentRound?: RoundState | null,
     currentRoundNumber?: number,
+    gameRound?: number,
     phaseTimerPhase?: string,
     phaseTimerDurationMs?: number,
     phaseTimerExpiresAt?: number,
@@ -64,12 +98,16 @@ const normalizePlayer = (player: Player) => ({
     ...player,
     ready: !!player.ready,
     points: Number(player.points) || 0,
+    pointsLost: Number(player.pointsLost) || 0,
+    pointsLostThisRound: Number(player.pointsLostThisRound) || 0,
 })
 
 const resetPlayerForLobby = (player: Player): Player => ({
     ...player,
     ready: false,
     points: 0,
+    pointsLost: 0,
+    pointsLostThisRound: 0,
     white_cards: [],
     eligibleFromRound: 1,
 })
@@ -88,6 +126,7 @@ export const useLobbyStore = defineStore('lobby', {
         phaseTimerExpiresAt: 0,
         currentRound: null as RoundState | null,
         currentRoundNumber: 0,
+        currentGameRound: 0,
         roundStartedTick: 0,
         roundTimerDurationMs: 0,
         roundTimerExpiresAt: 0,
@@ -96,6 +135,10 @@ export const useLobbyStore = defineStore('lobby', {
         pendingSelectedCardTick: 0,
         pendingUnselectedCard: null as WhiteCard | null,
         pendingUnselectedCardTick: 0,
+        pendingSwapCard: null as WhiteCard | null,
+        pendingSwapCardTick: 0,
+        lastSwappedPlayerId: null as string | null,
+        cardSwappedTick: 0,
         pendingCzarSelectedEntry: null as { playerId: string; card: WhiteCard } | null,
         pendingCzarSelectedTick: 0,
         lastSelectedCard: null as { playerId: string; card?: WhiteCard | null; action: 'selected' | 'unselected'; sync?: boolean } | null,
@@ -106,6 +149,11 @@ export const useLobbyStore = defineStore('lobby', {
         selectionLockBoostTick: 0,
         czarCursor: null as { playerId?: string; x: number; y: number; visible?: boolean } | null,
         czarCursorTick: 0,
+        czarRating: emptyCzarRating() as CzarRatingState,
+        czarRatingStartedTick: 0,
+        czarRatingVotedTick: 0,
+        czarRatingResolvedTick: 0,
+        lastCzarRatingVote: null as { playerId: string; vote: CzarRatingVote } | null,
         config: {
             lockBoostCooldownMs: 120,
         },
@@ -170,6 +218,26 @@ export const useLobbyStore = defineStore('lobby', {
                 && !this.getCurrentPlayerIsCzar()
                 && !this.isCurrentPlayerWaitingForRound()
         },
+        isCardSwapEnabled(): boolean {
+            return this.settings.cardSwapEnabled !== false
+        },
+        canCurrentPlayerSwapCard(): boolean {
+            if (!this.isCardSwapEnabled()) return false
+            if (!this.canCurrentPlayerPlayCard()) return false
+            const player = this.getCurrentPlayer()
+            return (Number(player?.points) || 0) >= CARD_SWAP_COST
+        },
+        canCurrentPlayerRate(): boolean {
+            if (this.phase !== 'czar-result') return false
+            if (!this.czarRating.active || this.czarRating.resolved) return false
+            if (this.getCurrentPlayerIsCzar()) return false
+            return !!this.getCurrentPlayerId()
+        },
+        hasCurrentPlayerRated(): boolean {
+            const id = this.getCurrentPlayerId()
+            if (!id) return false
+            return this.czarRating.myVote !== null || !!this.czarRating.votes[id]
+        },
         canCurrentPlayerKickPlayer(playerId: string) {
             return this.getCurrentPlayerIsHost() && playerId !== this.getCurrentPlayerId()
         },
@@ -218,6 +286,7 @@ export const useLobbyStore = defineStore('lobby', {
             this.selectedPacks = []
             this.currentRound = null
             this.currentRoundNumber = 0
+            this.currentGameRound = 0
             this.roundStartedTick = 0
             this.roundTimerDurationMs = 0
             this.roundTimerExpiresAt = 0
@@ -226,6 +295,8 @@ export const useLobbyStore = defineStore('lobby', {
             this.pendingSelectedCardTick = 0
             this.pendingUnselectedCard = null
             this.pendingUnselectedCardTick = 0
+            this.pendingSwapCard = null
+            this.pendingSwapCardTick = 0
             this.pendingCzarSelectedEntry = null
             this.pendingCzarSelectedTick = 0
             this.lastSelectedCard = null
@@ -236,6 +307,7 @@ export const useLobbyStore = defineStore('lobby', {
             this.selectionLockBoostTick = 0
             this.czarCursor = null
             this.czarCursorTick = 0
+            this.resetCzarRating()
             this.phaseTimerPhase = ''
             this.phaseTimerDurationMs = 0
             this.phaseTimerExpiresAt = 0
@@ -267,6 +339,9 @@ export const useLobbyStore = defineStore('lobby', {
 
             if (typeof res.currentRoundNumber === 'number') {
                 this.currentRoundNumber = res.currentRoundNumber
+            }
+            if (typeof res.gameRound === 'number') {
+                this.currentGameRound = res.gameRound
             }
             if (res.currentRound !== undefined) {
                 this.currentRound = res.currentRound ?? null
@@ -464,6 +539,14 @@ export const useLobbyStore = defineStore('lobby', {
             }
         },
 
+        setCurrentGameRound(gameRound?: number | null) {
+            if (typeof gameRound === 'number') {
+                this.currentGameRound = gameRound
+            } else if (gameRound === null) {
+                this.currentGameRound = 0
+            }
+        },
+
         setRoundTimer(durationMs?: number, expiresAt?: number) {
             this.roundTimerDurationMs = durationMs ?? 0
             this.roundTimerExpiresAt = expiresAt ?? 0
@@ -500,6 +583,21 @@ export const useLobbyStore = defineStore('lobby', {
 
         clearPendingUnselectedCard() {
             this.pendingUnselectedCard = null
+        },
+
+        queueSwapCard(card: WhiteCard) {
+            this.pendingSwapCard = card
+            this.pendingSwapCardTick += 1
+        },
+
+        clearPendingSwapCard() {
+            this.pendingSwapCard = null
+        },
+
+        recordCardSwapped(playerId: string) {
+            if (!playerId) return
+            this.lastSwappedPlayerId = playerId
+            this.cardSwappedTick += 1
         },
 
         queueCzarSelectedEntry(entry: { playerId: string; card: WhiteCard }) {
@@ -559,6 +657,52 @@ export const useLobbyStore = defineStore('lobby', {
         recordCzarCursor(payload: { playerId?: string; x: number; y: number; visible?: boolean }) {
             this.czarCursor = payload
             this.czarCursorTick += 1
+        },
+
+        resetCzarRating() {
+            this.czarRating = emptyCzarRating()
+            this.lastCzarRatingVote = null
+        },
+        startCzarRating(payload: { durationMs?: number; expiresAt?: number }) {
+            this.czarRating = {
+                ...emptyCzarRating(),
+                active: true,
+                durationMs: Number(payload?.durationMs) || 0,
+                expiresAt: Number(payload?.expiresAt) || 0,
+            }
+            this.lastCzarRatingVote = null
+            this.czarRatingStartedTick += 1
+        },
+        recordCzarRatingVote(payload: { playerId: string; vote: CzarRatingVote; up?: number; down?: number }) {
+            if (!this.czarRating.active) return
+            this.czarRating.votes[payload.playerId] = payload.vote
+            if (typeof payload.up === 'number') this.czarRating.up = payload.up
+            if (typeof payload.down === 'number') this.czarRating.down = payload.down
+            if (payload.playerId === this.getCurrentPlayerId()) {
+                this.czarRating.myVote = payload.vote
+            }
+            this.lastCzarRatingVote = { playerId: payload.playerId, vote: payload.vote }
+            this.czarRatingVotedTick += 1
+        },
+        resolveCzarRating(payload: { result: 'win' | 'lose' | 'tie'; up?: number; down?: number; bonus?: number }) {
+            this.czarRating.active = false
+            this.czarRating.resolved = true
+            this.czarRating.result = payload.result
+            if (typeof payload.up === 'number') this.czarRating.up = payload.up
+            if (typeof payload.down === 'number') this.czarRating.down = payload.down
+            this.czarRating.bonus = Number(payload.bonus) || 0
+            this.czarRatingResolvedTick += 1
+        },
+        async submitCzarRatingVote(vote: CzarRatingVote) {
+            if (!this.canCurrentPlayerRate()) return
+            if (this.hasCurrentPlayerRated()) return
+            // optimistic local lock so the buttons disable immediately
+            this.czarRating.myVote = vote
+
+            const conn = useConnectionStore()
+            const socket = conn.getSocketSafe()
+            if (!socket) return
+            socket.emit('czar:rating-vote', { lobbyId: this.lobbyId, vote })
         },
         requestLockBoost(playerId: string) {
             if (!this.lobbyId) return

@@ -1,7 +1,8 @@
-import { startResultsPhase, startRoundFlow } from '../services/phaseFlowService.js'
+import { startNextTurn } from '../services/phaseFlowService.js'
 import { transitionPhase } from '../services/phaseService.js'
 import { phaseTimer } from '../utils/timers.js'
-import { finalizeRound, selectCzarCard } from '../services/gameService.js'
+import { finalizeRound, selectCzarCard, recordCzarRatingVote } from '../services/gameService.js'
+import { startCzarRatingFlow, resolveCzarRatingAndBroadcast } from '../services/czarRatingService.js'
 
 const phaseTimerService = phaseTimer()
 
@@ -20,20 +21,13 @@ export const registerRoundsHandlers = ({ io, socket, games, socketRooms }) => {
             return cb?.({ error: 'not_card_selector' })
         }
 
-        const nextRound = currentRound + 1
-        if (!game.rounds?.[nextRound]) {
-            phaseTimerService.clear(lobbyId)
-            const resultsRes = startResultsPhase({ io, games, lobbyId })
-            if (resultsRes?.error) return cb?.(resultsRes)
-            return cb?.({ ok: true, phase: 'results' })
-        }
-
         phaseTimerService.clear(lobbyId)
-        transitionPhase({ games, io, lobbyId, to: 'board' })
-        const res = startRoundFlow({ io, games, lobbyId, round: nextRound })
+        const res = startNextTurn({ io, games, lobbyId })
         if (res && 'error' in res) return cb?.(res)
 
-        cb?.({ ok: true, round: nextRound })
+        const updated = games.get(lobbyId)
+        if (updated?.phase === 'results') return cb?.({ ok: true, phase: 'results' })
+        cb?.({ ok: true, round: updated?.currentRound ?? null })
     })
 
     socket.on('czar:card-selected', async ({ lobbyId, entry }, cb) => {
@@ -53,6 +47,24 @@ export const registerRoundsHandlers = ({ io, socket, games, socketRooms }) => {
         }
         phaseTimerService.clear(lobbyId)
         transitionPhase({ games, io, lobbyId, to: 'czar-result' })
+
+        // start the audience rating (no-op when the setting is off / no audience)
+        startCzarRatingFlow({ io, games, lobbyId })
+        cb?.({ ok: true })
+    })
+
+    socket.on('czar:rating-vote', ({ lobbyId, vote }, cb) => {
+        const res = recordCzarRatingVote({ games, lobbyId, playerId: socket.id, vote })
+        if (res.error) return cb?.({ error: res.error })
+
+        io.to(lobbyId).emit('czar:rating-voted', {
+            playerId: socket.id,
+            vote,
+            up: res.up,
+            down: res.down,
+        })
+
+        if (res.allVoted) resolveCzarRatingAndBroadcast({ io, games, lobbyId })
         cb?.({ ok: true })
     })
 }

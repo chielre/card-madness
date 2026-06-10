@@ -1,11 +1,12 @@
 import { nanoid } from 'nanoid'
-import { givePlayerHand, joinGame, selectPlayerCard, lockPlayerSelection, areAllNonSelectorPlayersSelected, selectCzarCard, finalizeRound } from './gameService.js'
+import { givePlayerHand, joinGame, selectPlayerCard, lockPlayerSelection, areAllNonSelectorPlayersSelected, selectCzarCard, finalizeRound, recordCzarRatingVote } from './gameService.js'
 import { scheduleSelectionLockTimer, hasActiveSelectionLocks } from '../utils/selectionLockTimers.js'
 
 import { roundTimer, phaseTimer } from '../utils/timers.js'
 
 import { transitionPhase } from './phaseService.js'
-import { startCzarPhase } from './phaseFlowService.js'
+import { startCzarPhase, startNextTurn } from './phaseFlowService.js'
+import { startCzarRatingFlow, resolveCzarRatingAndBroadcast } from './czarRatingService.js'
 
 
 const roundTimerService = roundTimer();
@@ -13,8 +14,12 @@ const phaseTimerService = phaseTimer();
 
 const BOT_LOOP_INTERVAL_MS = 500
 const BOT_LOCK_DELAY_MS = 1200
+// how long a bot czar lingers on the result before advancing the round
+const BOT_NEXT_ROUND_MS = 14000          // no rating: reveal + scoreboard view
+const BOT_POST_RATING_NEXT_MS = 7000     // after a rating resolves: scoreboard view
 
 const botLoops = new Map<string, ReturnType<typeof setInterval>>()
+const botAdvanceScheduled = new Map<string, number>()  // lobbyId -> round already scheduled
 
 const isBotPlayer = (player) => Boolean(player?.isBot)
 const isEligibleForRound = (player, roundNumber) => (Number(player?.eligibleFromRound) || 1) <= (Number(roundNumber) || 0)
@@ -90,6 +95,52 @@ const selectBotCzarCard = async ({ io, games, lobbyId, bot, round }) => {
 
     phaseTimerService.clear(lobbyId)
     transitionPhase({ games, io, lobbyId, to: 'czar-result' })
+
+    // a bot czar's pick is still rated by the audience (no-op when disabled)
+    startCzarRatingFlow({ io, games, lobbyId })
+}
+
+// Replicates the round:next handler for a bot czar, which cannot click "next round".
+const advanceBotCzarRound = ({ io, games, lobbyId }) => {
+    const game = games.get(lobbyId)
+    if (!game || game.phase !== 'czar-result') return
+
+    const currentRound = Number(game.currentRound) || 1
+    const round = game.rounds?.[currentRound]
+    const czarId = round?.cardSelector?.player
+    const czarBot = (game.players ?? []).find((p) => p.id === czarId && isBotPlayer(p))
+    if (!czarBot) return
+
+    phaseTimerService.clear(lobbyId)
+    startNextTurn({ io, games, lobbyId })
+}
+
+// Bots in the audience rate the czar's pick. They only vote once the rating
+// window is live (after the client reveal lead-in), and stagger across ticks so
+// their thumbs stickers fall one by one. Resolving early once everyone has voted.
+const castBotRatingVotes = ({ io, games, lobbyId, round, bots }) => {
+    const rating = round?.czarRating
+    if (!rating?.active || rating.resolved) return
+
+    const leadinEndAt = (rating.expiresAt ?? 0) - (rating.durationMs ?? 0)
+    if (Date.now() < leadinEndAt) return
+
+    const czarId = round.cardSelector?.player
+    for (const bot of bots) {
+        if (bot.id === czarId) continue
+        if (rating.votes?.[bot.id]) continue
+        if (Math.random() >= 0.4) continue   // stagger votes across ticks
+
+        const vote = Math.random() < 0.7 ? 'up' : 'down'
+        const res = recordCzarRatingVote({ games, lobbyId, playerId: bot.id, vote })
+        if (res?.error) continue
+
+        io.to(lobbyId).emit('czar:rating-voted', { playerId: bot.id, vote, up: res.up, down: res.down })
+        if (res.allVoted) {
+            resolveCzarRatingAndBroadcast({ io, games, lobbyId })
+            return
+        }
+    }
 }
 
 const tickBotLobby = ({ io, games, lobbyId }) => {
@@ -107,6 +158,27 @@ const tickBotLobby = ({ io, games, lobbyId }) => {
         if (czarBot) {
             void selectBotCzarCard({ io, games, lobbyId, bot: czarBot, round })
         }
+        return true
+    }
+
+    if (game.phase === 'czar-result') {
+        const round = game.rounds?.[game.currentRound]
+
+        // bots cast their audience rating votes while the rating is live; this
+        // runs regardless of who the czar is, so a human czar's pick is rated too
+        if (round?.czarRating?.active && !round.czarRating.resolved) {
+            castBotRatingVotes({ io, games, lobbyId, round, bots })
+            return true   // wait for the rating to finish before advancing
+        }
+
+        // only a bot czar auto-advances; a human czar clicks "next round"
+        const czarBot = bots.find((bot) => bot.id === round?.cardSelector?.player)
+        if (!czarBot) return true
+        if (botAdvanceScheduled.get(lobbyId) === game.currentRound) return true   // already scheduled
+
+        botAdvanceScheduled.set(lobbyId, game.currentRound)
+        const delay = round?.czarRating ? BOT_POST_RATING_NEXT_MS : BOT_NEXT_ROUND_MS
+        setTimeout(() => advanceBotCzarRound({ io, games, lobbyId }), delay)
         return true
     }
 
@@ -136,6 +208,7 @@ export const ensureBotLoop = ({ io, games, lobbyId }) => {
         if (!keep) {
             clearInterval(timer)
             botLoops.delete(lobbyId)
+            botAdvanceScheduled.delete(lobbyId)
         }
     }, BOT_LOOP_INTERVAL_MS)
     botLoops.set(lobbyId, timer)

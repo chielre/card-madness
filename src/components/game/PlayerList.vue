@@ -109,6 +109,24 @@ async function kickPlayer(playerId: string) {
   await lobby.kickPlayer(lobby.lobbyId, playerId)
 }
 
+// Flash a transient "kaart gewisseld (-1)" card next to a player's name when
+// they swap a card, then collapse it again (mirrors the czar token behaviour).
+function flashSwapFlag(playerId: string | null) {
+  if (!playerId || !listRef.value) return
+  const el = listRef.value.querySelector(`[data-swap-card="${playerId}"]`) as HTMLElement | null
+  if (!el) return
+
+  gsap.killTweensOf(el)
+  gsap.timeline()
+    .set(el, { transformOrigin: "left center" })
+    .fromTo(
+      el,
+      { autoAlpha: 0, x: -12, scale: 0.7 },
+      { autoAlpha: 1, x: 0, scale: 1, duration: 0.35, ease: "back.out(2)" }
+    )
+    .to(el, { autoAlpha: 0, x: -12, scale: 0.7, duration: 0.3, ease: "power2.in" }, "+=2.2")
+}
+
 watch(
   () => lobby.phase,
   () => {
@@ -143,6 +161,14 @@ watch(
   () => nextTick(() => placeCzarToken(false))
 )
 
+watch(
+  () => lobby.cardSwappedTick,
+  (tick) => {
+    if (!tick) return
+    flashSwapFlag(lobby.lastSwappedPlayerId)
+  }
+)
+
 onMounted(() => {
   if (listWrapRef.value && !shouldShowList.value) {
     setListVisibility(false)
@@ -167,9 +193,16 @@ onBeforeUnmount(() => {
 
       <ul class="space-y-2">
         <li v-for="player in displayPlayers" :key="player.id" class="group flex justify-between items-center gap-4 text-black text-xl font-bold p-2 rounded-xl even:bg-gray-100">
-          <div class="flex items-center gap-4">
+          <div class="relative flex items-center gap-4">
             <div class="inline-block w-4 h-4 border-3 border-white outline-2 outline-black rounded-full" :class="getPlayerStatusClass(player)" :data-player-dot="player.id"></div>
             <div>{{ player.name }}</div>
+            <div
+              :data-swap-card="player.id"
+              class="swap-flag absolute left-full top-1/2 -translate-y-1/2 ml-3 whitespace-nowrap text-xs font-black uppercase px-2 py-1 rounded-lg bg-red-500 text-white border-2 border-b-4 border-black pointer-events-none z-20"
+              style="opacity: 0"
+            >
+              Kaart gewisseld (−1)
+            </div>
           </div>
 
           <div class="flex items-center gap-3">

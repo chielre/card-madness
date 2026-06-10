@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 
 
@@ -7,13 +7,14 @@ import { useLobbyStore } from '@/store/LobbyStore'
 import { useAudioStore } from '@/store/AudioStore'
 import { useConnectionStore } from '@/store/ConnectionStore'
 import { useUiStore } from '@/store/UiStore'
-import { LOBBY_SETTINGS_LIMITS, normalizeLobbySettings } from '@/types/lobbySettings'
+import { normalizeLobbySettings } from '@/types/lobbySettings'
 import type { LobbySettings } from '@/types/lobbySettings'
 
 
 import { resolvePacks } from "@/utils/packs"
 
 import Close from 'vue-material-design-icons/Close.vue';
+import ChevronDown from 'vue-material-design-icons/ChevronDown.vue';
 
 
 import Tabs from "@/components/Tabs.vue"
@@ -40,12 +41,6 @@ const lobbySettings = ref<LobbySettings>(normalizeLobbySettings(lobby.settings))
 const selectedPackIds = computed(() => lobby.selectedPacks)
 const resolvedPacks = computed(() => resolvePacks())
 const canEditSettings = computed(() => lobby.getCurrentPlayerIsHost() && lobby.phase === 'lobby')
-const roundTimeMinSeconds = Math.round(LOBBY_SETTINGS_LIMITS.roundTimeMinMs / 1000)
-const roundTimeMaxSeconds = Math.round(LOBBY_SETTINGS_LIMITS.roundTimeMaxMs / 1000)
-const czarPickMinSeconds = Math.round(LOBBY_SETTINGS_LIMITS.czarPickTimeMinMs / 1000)
-const czarPickMaxSeconds = Math.round(LOBBY_SETTINGS_LIMITS.czarPickTimeMaxMs / 1000)
-const roundCountMin = LOBBY_SETTINGS_LIMITS.roundCountMin
-const roundCountMax = LOBBY_SETTINGS_LIMITS.roundCountMax
 
 const toggleToBool = (value: 'on' | 'off') => value === 'on'
 const boolToToggle = (value: boolean): 'on' | 'off' => value ? 'on' : 'off'
@@ -56,60 +51,8 @@ type SelectOption = {
     label: string
 }
 
-const buildSteppedOptions = ({
-    min,
-    max,
-    step,
-    current,
-    label,
-}: {
-    min: number
-    max: number
-    step: number
-    current: number
-    label: (value: number) => string
-}): SelectOption[] => {
-    const options: SelectOption[] = []
-    const normalizedStep = Math.max(1, Math.round(step))
-    const start = min
-
-    for (let value = start; value <= max; value += normalizedStep) {
-        options.push({ value, label: label(value) })
-    }
-
-    if (!options.some((option) => option.value === max)) {
-        options.push({ value: max, label: label(max) })
-    }
-
-    if (!options.some((option) => option.value === current)) {
-        options.push({ value: current, label: label(current) })
-    }
-
-    return options.sort((a, b) => a.value - b.value)
-}
-
-const buildRangeOptions = ({
-    min,
-    max,
-    current,
-    label,
-}: {
-    min: number
-    max: number
-    current: number
-    label: (value: number) => string
-}): SelectOption[] => {
-    const options: SelectOption[] = []
-    for (let value = min; value <= max; value += 1) {
-        options.push({ value, label: label(value) })
-    }
-
-    if (!options.some((option) => option.value === current)) {
-        options.push({ value: current, label: label(current) })
-    }
-
-    return options.sort((a, b) => a.value - b.value)
-}
+const buildTimeOptions = (valuesMs: number[]): SelectOption[] =>
+    valuesMs.map((value) => ({ value, label: formatSeconds(value) }))
 
 type PackFilter = 'nsfw'
 
@@ -198,35 +141,39 @@ const keepLobbyOpenToggle = computed<'on' | 'off'>({
     },
 })
 
-const personalizeCardsToggle = computed<'on' | 'off'>({
-    get: () => boolToToggle(lobbySettings.value.personalizeCards),
+const cardSwapEnabledToggle = computed<'on' | 'off'>({
+    get: () => boolToToggle(lobbySettings.value.cardSwapEnabled),
     set: (value) => {
-        void applyLobbySettings({ personalizeCards: toggleToBool(value) })
+        void applyLobbySettings({ cardSwapEnabled: toggleToBool(value) })
     },
 })
 
-const roundTimeOptions = computed<SelectOption[]>(() => buildSteppedOptions({
-    min: LOBBY_SETTINGS_LIMITS.roundTimeMinMs,
-    max: LOBBY_SETTINGS_LIMITS.roundTimeMaxMs,
-    step: 30_000,
-    current: lobbySettings.value.roundTimeMs,
-    label: (value) => formatSeconds(value),
+const czarRatingEnabledToggle = computed<'on' | 'off'>({
+    get: () => boolToToggle(lobbySettings.value.czarRatingEnabled),
+    set: (value) => {
+        void applyLobbySettings({ czarRatingEnabled: toggleToBool(value) })
+    },
+})
+
+const roundTimeOptions: SelectOption[] = buildTimeOptions([40_000, 60_000, 120_000])
+
+const czarPickTimeOptions: SelectOption[] = buildTimeOptions([40_000, 60_000, 120_000])
+
+const roundCountOptions: SelectOption[] = [1, 2, 3, 4, 5, 6, 7, 8].map((value) => ({
+    value,
+    label: `${value}`,
 }))
 
-const czarPickTimeOptions = computed<SelectOption[]>(() => buildSteppedOptions({
-    min: LOBBY_SETTINGS_LIMITS.czarPickTimeMinMs,
-    max: LOBBY_SETTINGS_LIMITS.czarPickTimeMaxMs,
-    step: 30_000,
-    current: lobbySettings.value.czarPickTimeMs,
-    label: (value) => formatSeconds(value),
-}))
+const czarRatingTimeOptions: SelectOption[] = buildTimeOptions([10_000, 30_000, 60_000, 120_000])
 
-const roundCountOptions = computed<SelectOption[]>(() => buildRangeOptions({
-    min: roundCountMin,
-    max: roundCountMax,
-    current: lobbySettings.value.roundCount,
-    label: (value) => `${value}`,
-}))
+const selectedCzarRatingTimeMs = computed<number>({
+    get: () => lobbySettings.value.czarRatingTimeMs,
+    set: (value) => {
+        const next = Number(value)
+        if (!Number.isFinite(next)) return
+        void applyLobbySettings({ czarRatingTimeMs: Math.round(next) })
+    },
+})
 
 const selectedRoundTimeMs = computed<number>({
     get: () => lobbySettings.value.roundTimeMs,
@@ -313,6 +260,42 @@ watch(
         readyModalRef.value?.reset()
     }
 )
+
+const settingsScrollRef = ref<HTMLElement | null>(null)
+const settingsCanScroll = ref(false)
+const settingsAtBottom = ref(true)
+
+const updateSettingsScroll = () => {
+    const el = settingsScrollRef.value
+    if (!el) return
+    settingsCanScroll.value = el.scrollHeight - el.clientHeight > 4
+    settingsAtBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight <= 4
+}
+
+let settingsMutationObserver: MutationObserver | null = null
+
+onMounted(() => {
+    void nextTick(updateSettingsScroll)
+    const el = settingsScrollRef.value
+    if (el && typeof MutationObserver !== 'undefined') {
+        settingsMutationObserver = new MutationObserver(() => {
+            void nextTick(updateSettingsScroll)
+        })
+        settingsMutationObserver.observe(el, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['style', 'class'],
+        })
+    }
+    window.addEventListener('resize', updateSettingsScroll)
+})
+
+onBeforeUnmount(() => {
+    settingsMutationObserver?.disconnect()
+    settingsMutationObserver = null
+    window.removeEventListener('resize', updateSettingsScroll)
+})
 
 defineExpose({ openReadyModal, closeReadyModal })
 
@@ -402,71 +385,105 @@ defineExpose({ openReadyModal, closeReadyModal })
 
 
             <!-- lobby settings -->
-            <div class="flex flex-col gap-4">
+            <div class="flex flex-col gap-4 w-88 max-w-full">
 
-                <div class=" bg-white border-4 border-b-8 rounded-xl border-black p-6 text-black overflow-scroll-y max-h-full">
-                    <Tabs>
-                        <Tab name="lobby" label="Lobby">
-                            <div class="space-y-6">
-                                <div class="flex flex-col gap-4 items-start">
-                                    <div>
-                                        <h2 class="font-bold text-xl">Lobby blijft open</h2>
-                                        <p class="mt-2">Als dit uit staat kunnen nieuwe spelers niet meer joinen zodra de game start.</p>
+                <div class="relative">
+                    <div
+                        ref="settingsScrollRef"
+                        @scroll="updateSettingsScroll"
+                        class="settings-scroll bg-white border-4 border-b-8 rounded-xl border-black p-6 text-black overflow-y-auto max-h-[calc(100vh-280px)]"
+                    >
+                        <Tabs>
+                            <Tab name="lobby" label="Lobby">
+                                <div class="space-y-5">
+                                    <div class="flex flex-col gap-2 items-start">
+                                        <div>
+                                            <h2 class="font-bold text-lg">Lobby blijft open</h2>
+                                            <p class="mt-1 text-sm text-gray-600">Nieuwe spelers kunnen niet meer joinen zodra de game start.</p>
+                                        </div>
+                                        <ToggleSwitch class="mt-1" name="lobby-open-setting" v-model="keepLobbyOpenToggle" :disabled="!canEditSettings" />
                                     </div>
-                                    <ToggleSwitch class="mt-2" name="lobby-open-setting" v-model="keepLobbyOpenToggle" :disabled="!canEditSettings" />
                                 </div>
-                            </div>
-                        </Tab>
+                            </Tab>
 
-                        <Tab name="game" label="Game">
-                            <div class="space-y-6">
-                                <div class="flex flex-col gap-4 items-start">
-                                    <div>
-                                        <h2 class="font-bold text-xl">Ronde tijd</h2>
-                                        <p class="mt-2">{{ formatSeconds(lobbySettings.roundTimeMs) }} ({{ roundTimeMinSeconds }}s - {{ roundTimeMaxSeconds }}s)</p>
+                            <Tab name="game" label="Game">
+                                <div class="space-y-5">
+                                    <div class="flex flex-col gap-2 items-start">
+                                        <div>
+                                            <h2 class="font-bold text-lg">Ronde tijd</h2>
+                                            <p class="mt-1 text-sm text-gray-600">De duur van een speelronde.</p>
+                                        </div>
+                                        <BaseSelect
+                                            v-model="selectedRoundTimeMs"
+                                            :options="roundTimeOptions"
+                                            :disabled="!canEditSettings"
+                                            name="round-time-setting"
+                                        />
                                     </div>
-                                    <BaseSelect
-                                        v-model="selectedRoundTimeMs"
-                                        :options="roundTimeOptions"
-                                        :disabled="!canEditSettings"
-                                        name="round-time-setting"
-                                    />
-                                </div>
-                                <div class="flex flex-col gap-4 items-start">
-                                    <div>
-                                        <h2 class="font-bold text-xl">Czar kiestijd</h2>
-                                        <p class="mt-2">{{ formatSeconds(lobbySettings.czarPickTimeMs) }} ({{ czarPickMinSeconds }}s - {{ czarPickMaxSeconds }}s)</p>
+                                    <div class="flex flex-col gap-2 items-start">
+                                        <div>
+                                            <h2 class="font-bold text-lg">Kiestijd</h2>
+                                            <p class="mt-1 text-sm text-gray-600">Hoelang de czar mag kiezen.</p>
+                                        </div>
+                                        <BaseSelect
+                                            v-model="selectedCzarPickTimeMs"
+                                            :options="czarPickTimeOptions"
+                                            :disabled="!canEditSettings"
+                                            name="czar-pick-time-setting"
+                                        />
                                     </div>
-                                    <BaseSelect
-                                        v-model="selectedCzarPickTimeMs"
-                                        :options="czarPickTimeOptions"
-                                        :disabled="!canEditSettings"
-                                        name="czar-pick-time-setting"
-                                    />
-                                </div>
-                                <div class="flex flex-col gap-4 items-start">
-                                    <div>
-                                        <h2 class="font-bold text-xl">Aantal rondes</h2>
-                                        <p class="mt-2">{{ lobbySettings.roundCount }} ({{ roundCountMin }} - {{ roundCountMax }})</p>
+                                    <div class="flex flex-col gap-2 items-start">
+                                        <div>
+                                            <h2 class="font-bold text-lg">Aantal rondes</h2>
+                                            <p class="mt-1 text-sm text-gray-600">Hoeveel keer wordt iedereen een czar.</p>
+                                        </div>
+                                        <BaseSelect
+                                            v-model="selectedRoundCount"
+                                            :options="roundCountOptions"
+                                            :disabled="!canEditSettings"
+                                            name="round-count-setting"
+                                        />
                                     </div>
-                                    <BaseSelect
-                                        v-model="selectedRoundCount"
-                                        :options="roundCountOptions"
-                                        :disabled="!canEditSettings"
-                                        name="round-count-setting"
-                                    />
-                                </div>
-                                <div class="flex flex-col gap-4 items-start">
-                                    <div>
-                                        <h2 class="font-bold text-xl">Personaliseer kaarten</h2>
-                                        <p class="mt-2">Uit = gebruik een voorgedefinieerde namenlijst in plaats van spelersnamen.</p>
+                                    <div class="flex flex-col gap-2 items-start">
+                                        <div>
+                                            <h2 class="font-bold text-lg">Kaarten wisselen</h2>
+                                            <p class="mt-1 text-sm text-gray-600">Spelers kunnen een kaart inruilen voor een nieuwe. Dit kost 1 punt.</p>
+                                        </div>
+                                        <ToggleSwitch class="mt-1" name="card-swap-setting" v-model="cardSwapEnabledToggle" :disabled="!canEditSettings" />
                                     </div>
-                                    <ToggleSwitch class="mt-2" name="personalize-cards-setting" v-model="personalizeCardsToggle" :disabled="!canEditSettings" />
+                                    <div class="flex flex-col gap-2 items-start">
+                                        <div>
+                                            <h2 class="font-bold text-lg">Publieksbeoordeling</h2>
+                                            <p class="mt-1 text-sm text-gray-600">Laat het publiek de keuze van de czar beoordelen. Bij een meerderheid krijgt de czar extra punten.</p>
+                                        </div>
+                                        <ToggleSwitch class="mt-1" name="czar-rating-setting" v-model="czarRatingEnabledToggle" :disabled="!canEditSettings" />
+                                    </div>
+                                    <div v-if="lobbySettings.czarRatingEnabled" class="flex flex-col gap-2 items-start">
+                                        <div>
+                                            <h2 class="font-bold text-lg">Beoordelingstijd</h2>
+                                            <p class="mt-1 text-sm text-gray-600">De tijd die het publiek krijgt om te beoordelen.</p>
+                                        </div>
+                                        <BaseSelect
+                                            v-model="selectedCzarRatingTimeMs"
+                                            :options="czarRatingTimeOptions"
+                                            :disabled="!canEditSettings"
+                                            name="czar-rating-time-setting"
+                                        />
+                                    </div>
                                 </div>
-                            </div>
-                        </Tab>
-                    </Tabs>
+                            </Tab>
+                        </Tabs>
+                    </div>
 
+                    <!-- scroll indicator -->
+                    <div
+                        v-show="settingsCanScroll && !settingsAtBottom"
+                        class="pointer-events-none absolute inset-x-1 bottom-1 flex h-16 items-end justify-center rounded-b-xl bg-linear-to-t from-white via-white/90 to-transparent pb-2"
+                    >
+                        <span class="flex items-center gap-1 text-xs font-black text-gray-500 animate-bounce">
+                            <ChevronDown :size="16" /> meer instellingen
+                        </span>
+                    </div>
                 </div>
 
 

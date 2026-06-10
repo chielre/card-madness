@@ -19,6 +19,7 @@ import BoardTimer from "@/components/game/BoardTimer.vue"
 import SelectedCardsGrid from "@/components/game/SelectedCardsGrid.vue"
 import { usePendingSelections } from "@/components/game/usePendingSelections"
 import PlayerList from "@/components/game/PlayerList.vue"
+import TrashCan from "vue-material-design-icons/TrashCan.vue"
 
 import BaseButton from "../../../components/ui/BaseButton.vue"
 
@@ -29,6 +30,7 @@ const ui = useUiStore()
 
 const handRef = ref<HTMLElement | null>(null)
 const playRef = ref<HTMLElement | null>(null)
+const trashRef = ref<HTMLElement | null>(null)
 const boardGridRef = ref<HTMLElement | null>(null)
 const boardAreaRef = ref<HTMLElement | null>(null)
 const sortableRef = ref<Sortable | null>(null)
@@ -43,6 +45,11 @@ const isBoardPhase = computed(() => lobby.phase === "board")
 const isCzarPhase = computed(() => lobby.phase === "czar")
 const isRoundActive = computed(() => isBoardPhase.value && lobby.roundStartedTick > lobby.roundTimeoutTick)
 const isWaitingForRound = computed(() => lobby.isCurrentPlayerWaitingForRound())
+
+// trash / swap zone: visible while the player is an active card-player this round,
+// but only usable (drops accepted) when they can afford the swap cost.
+const showTrash = computed(() => lobby.isCardSwapEnabled() && isRoundActive.value && !isCurrentPlayerCzar.value && !isWaitingForRound.value)
+const canSwapCard = computed(() => lobby.canCurrentPlayerSwapCard())
 
 const blackCardHtml = computed(() => lobby.getCurrentBlackCardHtml() || "...")
 const blackCardTemplateHtml = computed(() => {
@@ -194,6 +201,7 @@ function resetDragState() {
     drag.mirror = null
     drag.startInPlay = false
     playRef.value?.classList.remove("play-slot--over")
+    trashRef.value?.classList.remove("trash-zone--over")
     cleanupPriming()
     detachPrimingListeners()
 }
@@ -254,6 +262,50 @@ function isOverPlaySlot(x: number, y: number) {
     if (!playRef.value) return false
     const elements = document.elementsFromPoint(x, y)
     return elements.some((el) => el === playRef.value || playRef.value!.contains(el))
+}
+
+function isOverTrash(x: number, y: number) {
+    if (!trashRef.value) return false
+    const elements = document.elementsFromPoint(x, y)
+    return elements.some((el) => el === trashRef.value || trashRef.value!.contains(el))
+}
+
+function animateCardToTrash(sourceEl: HTMLElement, x: number, y: number) {
+    if (!trashRef.value) return
+    const rect = sourceEl.getBoundingClientRect()
+    const startLeft = Number.isFinite(x) ? x - rect.width / 2 : rect.left
+    const startTop = Number.isFinite(y) ? y - rect.height / 2 : rect.top
+    const trashRect = trashRef.value.getBoundingClientRect()
+
+    const clone = sourceEl.cloneNode(true) as HTMLElement
+    clone.classList.remove("drag--source", "drag--mirror", "drag--priming")
+    Object.assign(clone.style, {
+        position: "fixed",
+        left: `${startLeft}px`,
+        top: `${startTop}px`,
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+        margin: "0",
+        zIndex: "70",
+        pointerEvents: "none",
+    })
+    document.body.appendChild(clone)
+
+    const targetX = trashRect.left + trashRect.width / 2 - (startLeft + rect.width / 2)
+    const targetY = trashRect.top + trashRect.height / 2 - (startTop + rect.height / 2)
+
+    gsap.timeline({ onComplete: () => clone.remove() })
+        .to(clone, {
+            x: targetX,
+            y: targetY,
+            scale: 0.15,
+            autoAlpha: 0,
+            rotate: gsap.utils.random(-40, 40),
+            duration: 0.45,
+            ease: "power2.in",
+        })
+
+    audioStore.playPop()
 }
 
 function getCardFromEl(el: HTMLElement) {
@@ -527,6 +579,10 @@ onMounted(() => {
             const overPlay = isOverPlaySlot(x, y)
             playRef.value.classList.toggle("play-slot--over", overPlay)
         }
+        if (trashRef.value) {
+            const overTrash = isOverTrash(x, y)
+            trashRef.value.classList.toggle("trash-zone--over", overTrash && !drag.startInPlay && canSwapCard.value)
+        }
     })
 
     sortable.on("sortable:sort", (evt: any) => {
@@ -550,10 +606,27 @@ onMounted(() => {
 
             const { x, y } = getPointerPosition(evt)
             const overPlay = isOverPlaySlot(x, y)
+            const overTrash = isOverTrash(x, y)
             const wasInPlay = drag.startInPlay
             const currentId = currentPlayerId.value
             const unselectBlocked = currentId ? isUnselectBlocked(currentId) : false
             const shouldUnselect = wasInPlay && !overPlay && !unselectBlocked
+
+            // drop a hand card on the trash to swap it for a new one (costs a point)
+            if (overTrash && !overPlay && !wasInPlay && canSwapCard.value) {
+                const card = getCardFromEl(drag.source)
+                if (card) {
+                    handRef.value.appendChild(drag.source)
+                    setCardPlacement(drag.source, false)
+                    animateCardToTrash(drag.source, x, y)
+                    lobby.queueSwapCard(card)
+                    playRef.value.classList.remove("play-slot--over")
+                    trashRef.value?.classList.remove("trash-zone--over")
+                    resetDragState()
+                    syncPlaySlotState()
+                    return
+                }
+            }
 
             if (wasInPlay && unselectBlocked && !overPlay) {
                 playRef.value.appendChild(drag.source)
@@ -619,7 +692,7 @@ onBeforeUnmount(() => {
                     <img class="" width="150" src="../../../assets/images/logo.png" alt="" />
                 </div>
 
-                <BoardTimer :phase="lobby.phase" :round-started-tick="lobby.roundStartedTick" :round-timer-expires-at="lobby.roundTimerExpiresAt" :round-timer-duration-ms="lobby.roundTimerDurationMs" :phase-timer-phase="lobby.phaseTimerPhase" :phase-timer-expires-at="lobby.phaseTimerExpiresAt" :phase-timer-duration-ms="lobby.phaseTimerDurationMs" />
+                <BoardTimer :phase="lobby.phase" :round-started-tick="lobby.roundStartedTick" :round-timer-expires-at="lobby.roundTimerExpiresAt" :round-timer-duration-ms="lobby.roundTimerDurationMs" :phase-timer-phase="lobby.phaseTimerPhase" :phase-timer-expires-at="lobby.phaseTimerExpiresAt" :phase-timer-duration-ms="lobby.phaseTimerDurationMs" :round-count="lobby.settings.roundCount" :game-round="lobby.currentGameRound" />
 
                 <div class="p-4 flex-1 flex items-center justify-end gap-4">
                     <BaseButton size="md" color="pink" @click="ui.openSettings" icon="Cog"></BaseButton>
@@ -629,7 +702,7 @@ onBeforeUnmount(() => {
 
             <PlayerList />
 
-            <div ref="boardAreaRef" class="flex items-center">
+            <div ref="boardAreaRef" class="relative flex items-center">
                 <div class="pr-10 bg-white border-2 border-b-5 rounded-xl border-black p-6 text-black">
                     <div class="relative">
                         <div ref="BlackCardRef" class="madness-card card-black card-anim" v-html="blackCardHtml"></div>
@@ -647,6 +720,11 @@ onBeforeUnmount(() => {
                     </div>
 
                     <SelectedCardsGrid :is-card-locked="isCardLocked" :play-ref="playRef" :board-grid-ref="boardGridRef" @reveal-ready="onCzarRevealReady" @reveal-start="onCzarRevealStart" />
+                </div>
+
+                <div v-show="showTrash" ref="trashRef" class="trash-zone absolute left-full top-1/2 ml-8" :class="{ 'trash-zone--disabled': !canSwapCard }" :title="canSwapCard ? 'Sleep een kaart hierheen om te wisselen (−1 punt)' : 'Je hebt minimaal 1 punt nodig om te wisselen'">
+                    <TrashCan :size="44" />
+                    <span class="trash-zone__label">Wissel<br />−1 punt</span>
                 </div>
             </div>
 

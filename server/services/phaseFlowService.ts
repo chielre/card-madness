@@ -4,6 +4,7 @@ import {
   autoSelectMissingPlayerCards,
   ensureLobbySettings,
   finalizeRound,
+  planNextTurn,
   prepareGame,
   setRound,
 } from './gameService.js'
@@ -42,18 +43,14 @@ export const handleStartIntroFlow = async ({ io, socket, games, lobbyId, game })
     const preparedGame = games.get(lobbyId)
     emitPlayerCardsUpdated(io, preparedGame)
 
-    // Debug
-    if (shouldSkipIntro()) {
-      const introRes = transitionPhase({ games, io, lobbyId, to: 'intro' })
-      if (introRes?.error) return
-      const boardRes = transitionPhase({ games, io, lobbyId, to: 'board' })
-      if (boardRes?.error) return
-      startRoundFlow({ io, games, lobbyId, round: 1 })
-      return
-    }
-
     const phaseRes = transitionPhase({ games, io, lobbyId, to: 'intro' })
     if (phaseRes.error) return
+
+    // Debug: jump straight into the first turn
+    if (shouldSkipIntro()) {
+      startNextTurn({ io, games, lobbyId })
+      return
+    }
 
     const phaseTimerState = phaseTimerService.schedule({
       io,
@@ -86,8 +83,34 @@ export const handleGameFlow = ({ io, socket, games, lobbyId, game }) => {
   if (!game) return
   if (game.phase !== 'intro') return
 
-  transitionPhase({ games, io, lobbyId, to: 'board' })
-  startRoundFlow({ io, games, lobbyId, round: 1 })
+  startNextTurn({ io, games, lobbyId })
+}
+
+/**
+ * Advances the game engine to the next turn: picks the next czar from the
+ * current game round's queue, or ends the game when all game rounds are done.
+ */
+export const startNextTurn = ({ io, games, lobbyId, durationMs = 0 }) => {
+  const plan = planNextTurn({ games, lobbyId })
+  if (plan?.error) return plan
+
+  if (plan.done) {
+    phaseTimerService.clear(lobbyId)
+    return startResultsPhase({ io, games, lobbyId })
+  }
+
+  const game = games.get(lobbyId)
+  if (game && game.phase !== 'board') {
+    transitionPhase({ games, io, lobbyId, to: 'board' })
+  }
+
+  const res = startRoundFlow({ io, games, lobbyId, round: plan.turn, czarId: plan.czarId, durationMs })
+  // If a turn cannot be started (e.g. no unique black cards left), end gracefully.
+  if (res && 'error' in res) {
+    phaseTimerService.clear(lobbyId)
+    return startResultsPhase({ io, games, lobbyId })
+  }
+  return res
 }
 
 export const startResultsPhase = ({ io, games, lobbyId }) => {
@@ -99,7 +122,7 @@ export const startResultsPhase = ({ io, games, lobbyId }) => {
   return res
 }
 
-export const startRoundFlow = ({ io, games, lobbyId, round, durationMs = 0 }) => {
+export const startRoundFlow = ({ io, games, lobbyId, round, czarId = null, durationMs = 0 }) => {
   clearSelectionLockTimers(lobbyId)
 
   const game = games.get(lobbyId)
@@ -108,11 +131,8 @@ export const startRoundFlow = ({ io, games, lobbyId, round, durationMs = 0 }) =>
   const resolvedRoundDurationMs = Number(durationMs) > 0
     ? Number(durationMs)
     : settings.roundTimeMs
-  if (!game.rounds?.[round]) {
-    return startResultsPhase({ io, games, lobbyId })
-  }
 
-  const setRoundRes = setRound({ games, lobbyId, to: round })
+  const setRoundRes = setRound({ games, lobbyId, to: round, czarId })
   if (setRoundRes?.error) return setRoundRes
 
   const updatedGame = games.get(lobbyId)
@@ -120,6 +140,7 @@ export const startRoundFlow = ({ io, games, lobbyId, round, durationMs = 0 }) =>
   io.to(lobbyId).emit('board:round-updated', {
     currentRound: updatedRound,
     roundNumber: updatedGame?.currentRound ?? null,
+    gameRound: updatedGame?.gameRound ?? null,
   })
 
   const freshGame = games.get(lobbyId)
@@ -160,6 +181,7 @@ export const startRoundFlow = ({ io, games, lobbyId, round, durationMs = 0 }) =>
   io.to(lobbyId).emit('board:round-started', {
     currentRound: startedRound,
     roundNumber: freshGame.currentRound,
+    gameRound: freshGame.gameRound ?? null,
     durationMs: roundTimerState?.durationMs ?? resolvedRoundDurationMs,
     expiresAt: roundTimerState?.expiresAt ?? (Date.now() + resolvedRoundDurationMs),
   })
@@ -217,6 +239,7 @@ export const startCzarPhase = ({
   io.to(lobbyId).emit('board:round-updated', {
     currentRound: roundState,
     roundNumber: afterAutoGame.currentRound,
+    gameRound: afterAutoGame.gameRound ?? null,
   })
 
   const phaseTimerState = phaseTimerService.schedule({

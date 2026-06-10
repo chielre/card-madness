@@ -1,18 +1,22 @@
 export const LOBBY_SETTINGS_LIMITS = {
     roundTimeMinMs: 40_000,
     roundTimeMaxMs: 120_000,
-    czarPickTimeMinMs: 60_000,
+    czarPickTimeMinMs: 40_000,
     czarPickTimeMaxMs: 120_000,
-    roundCountMin: 3,
-    roundCountMax: 12,
+    roundCountMin: 1,
+    roundCountMax: 8,
+    czarRatingTimeMinMs: 10_000,
+    czarRatingTimeMaxMs: 120_000,
 } as const
 
 export const DEFAULT_LOBBY_SETTINGS = {
     keepLobbyOpen: true,
-    roundTimeMs: 90_000,
-    czarPickTimeMs: 90_000,
+    roundTimeMs: 60_000,
+    czarPickTimeMs: 60_000,
     roundCount: 5,
-    personalizeCards: true,
+    cardSwapEnabled: true,
+    czarRatingEnabled: false,
+    czarRatingTimeMs: 30_000,
 }
 
 type LobbySettingsInput = {
@@ -20,7 +24,9 @@ type LobbySettingsInput = {
     roundTimeMs?: number
     czarPickTimeMs?: number
     roundCount?: number
-    personalizeCards?: boolean
+    cardSwapEnabled?: boolean
+    czarRatingEnabled?: boolean
+    czarRatingTimeMs?: number
 } | null | undefined
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
@@ -56,5 +62,12 @@ export const normalizeLobbySettings = (settings?: LobbySettingsInput) => ({
         LOBBY_SETTINGS_LIMITS.roundCountMin,
         LOBBY_SETTINGS_LIMITS.roundCountMax
     ),
-    personalizeCards: toBoolean(settings?.personalizeCards, DEFAULT_LOBBY_SETTINGS.personalizeCards),
+    cardSwapEnabled: toBoolean(settings?.cardSwapEnabled, DEFAULT_LOBBY_SETTINGS.cardSwapEnabled),
+    czarRatingEnabled: toBoolean(settings?.czarRatingEnabled, DEFAULT_LOBBY_SETTINGS.czarRatingEnabled),
+    czarRatingTimeMs: normalizeMs(
+        settings?.czarRatingTimeMs,
+        DEFAULT_LOBBY_SETTINGS.czarRatingTimeMs,
+        LOBBY_SETTINGS_LIMITS.czarRatingTimeMinMs,
+        LOBBY_SETTINGS_LIMITS.czarRatingTimeMaxMs
+    ),
 })

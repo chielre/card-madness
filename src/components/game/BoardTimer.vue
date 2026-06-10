@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import gsap from "gsap"
 
 import CountdownTimer from "@/components/CountdownTimer.vue"
+import RoundDial from "@/components/game/RoundDial.vue"
 
 const props = defineProps<{
   phase: string
@@ -12,6 +13,8 @@ const props = defineProps<{
   phaseTimerPhase: string
   phaseTimerExpiresAt: number
   phaseTimerDurationMs: number
+  roundCount?: number
+  gameRound?: number
 }>()
 
 const timerRef = ref<InstanceType<typeof CountdownTimer> | null>(null)
@@ -158,7 +161,19 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="timerWrapRef" class="bg-[#2b0246] px-16 py-4 rounded-b-4xl border-2 border-black border-t-0">
-    <CountdownTimer ref="timerRef" :initial-seconds="240" :auto-start="false" :mode="timerMode" />
+  <div ref="timerWrapRef" class="relative">
+    <!-- timer (purple) — this box alone defines the screen-centered point -->
+    <div class="bg-[#2b0246] px-16 py-4 rounded-b-4xl border-2 border-black border-t-0">
+      <CountdownTimer ref="timerRef" :initial-seconds="240" :auto-start="false" :mode="timerMode" />
+    </div>
+
+    <!-- round indicator (separate white box, sits beside the timer without affecting its centering) -->
+    <div
+      v-if="(gameRound ?? 0) > 0"
+      class="absolute top-0 left-full bg-white rounded-b-2xl border-2 border-b-4 border-black border-t-0 px-4 pt-2 pb-3 flex flex-col items-center gap-1"
+    >
+      <span class="font-black uppercase text-sm tracking-wide text-[#2b0246]">Ronde</span>
+      <RoundDial :total="roundCount ?? 1" :current="gameRound ?? 1" class="w-20 h-20" />
+    </div>
   </div>
 </template>

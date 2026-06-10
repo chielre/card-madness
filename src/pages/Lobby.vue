@@ -206,17 +206,20 @@ const schedulePhaseSync = async (nextPhase: string) => {
 Board socket events
 */
 
-const handleBoardRoundUpdated = (payload: { currentRound: any; roundNumber?: number | null }) => {
+const handleBoardRoundUpdated = (payload: { currentRound: any; roundNumber?: number | null; gameRound?: number | null }) => {
     lobby.setCurrentRound(payload.currentRound)
     if (payload.roundNumber === null) lobby.setCurrentRoundNumber(null)
     else if (typeof payload.roundNumber === 'number') lobby.setCurrentRoundNumber(payload.roundNumber)
+    if (payload.gameRound !== undefined) lobby.setCurrentGameRound(payload.gameRound)
 }
 
-const handleBoardRoundStarted = (payload: { currentRound: any; roundNumber?: number | null; durationMs?: number; expiresAt?: number }) => {
+const handleBoardRoundStarted = (payload: { currentRound: any; roundNumber?: number | null; gameRound?: number | null; durationMs?: number; expiresAt?: number }) => {
     lobby.setCurrentRound(payload.currentRound)
     if (payload.roundNumber === null) lobby.setCurrentRoundNumber(null)
     else if (typeof payload.roundNumber === 'number') lobby.setCurrentRoundNumber(payload.roundNumber)
+    if (payload.gameRound !== undefined) lobby.setCurrentGameRound(payload.gameRound)
     lobby.setRoundTimer(payload.durationMs, payload.expiresAt)
+    lobby.resetCzarRating()
     lobby.markRoundStarted()
     audio.playRoundLoop()
 }
@@ -239,11 +242,24 @@ const handleBoardPlayerCardUnselected = (payload: { playerId: string; card?: any
 const handleBoardPlayerCardLocked = (payload: { playerId: string }) => {
     lobby.recordPlayerCardLocked(payload)
 }
+const handlePlayerCardSwapped = (payload: { playerId: string }) => {
+    lobby.recordCardSwapped(payload.playerId)
+}
 const handleBoardPlayerCardLockBoost = (payload: { playerId: string; selectionLockDurationMs?: number; selectionLockExpiresAt?: number }) => {
     lobby.recordSelectionLockBoost(payload)
 }
 const handleCzarCursorUpdate = (payload: { playerId?: string; x: number; y: number; visible?: boolean }) => {
     lobby.recordCzarCursor(payload)
+}
+
+const handleCzarRatingStarted = (payload: { durationMs?: number; expiresAt?: number }) => {
+    lobby.startCzarRating(payload)
+}
+const handleCzarRatingVoted = (payload: { playerId: string; vote: 'up' | 'down'; up?: number; down?: number }) => {
+    lobby.recordCzarRatingVote(payload)
+}
+const handleCzarRatingResult = (payload: { result: 'win' | 'lose' | 'tie'; up?: number; down?: number; bonus?: number }) => {
+    lobby.resolveCzarRating(payload)
 }
 
 
@@ -280,7 +296,11 @@ onMounted(async () => {
     socket.on('board:player-card-unselected', handleBoardPlayerCardUnselected)
     socket.on('board:player-card-locked', handleBoardPlayerCardLocked)
     socket.on('board:player-card-lock-boost', handleBoardPlayerCardLockBoost)
+    socket.on('player:card-swapped', handlePlayerCardSwapped)
     socket.on('czar:cursor-update', handleCzarCursorUpdate)
+    socket.on('czar:rating-started', handleCzarRatingStarted)
+    socket.on('czar:rating-voted', handleCzarRatingVoted)
+    socket.on('czar:rating-result', handleCzarRatingResult)
 
 
     if (shouldSkipName.value && !hasJoined.value) {
@@ -316,7 +336,11 @@ onBeforeUnmount(() => {
     socket.off('board:player-card-unselected', handleBoardPlayerCardUnselected)
     socket.off('board:player-card-locked', handleBoardPlayerCardLocked)
     socket.off('board:player-card-lock-boost', handleBoardPlayerCardLockBoost)
+    socket.off('player:card-swapped', handlePlayerCardSwapped)
     socket.off('czar:cursor-update', handleCzarCursorUpdate)
+    socket.off('czar:rating-started', handleCzarRatingStarted)
+    socket.off('czar:rating-voted', handleCzarRatingVoted)
+    socket.off('czar:rating-result', handleCzarRatingResult)
 })
 
 watch(
@@ -338,6 +362,17 @@ watch(
         if (!card) return
         socket.emit('player:card-unselected', { lobbyId, card })
         lobby.clearPendingUnselectedCard()
+    }
+)
+
+watch(
+    () => lobby.pendingSwapCardTick,
+    (tick) => {
+        if (!tick || !socket) return
+        const card = lobby.pendingSwapCard
+        if (!card) return
+        socket.emit('player:card-swap', { lobbyId, card })
+        lobby.clearPendingSwapCard()
     }
 )
 

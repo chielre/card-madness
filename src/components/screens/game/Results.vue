@@ -3,6 +3,8 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue"
 import gsap from "gsap"
 import { CustomEase } from "gsap/CustomEase"
 import PersonIcon from "vue-material-design-icons/Account.vue"
+import ThumbUp from "vue-material-design-icons/ThumbUp.vue"
+import ThumbDown from "vue-material-design-icons/ThumbDown.vue"
 
 import { resolveBlackCard, resolveWhiteCards } from "@/utils/cards"
 import { useLobbyStore } from "@/store/LobbyStore"
@@ -63,6 +65,37 @@ let czarResultStarting = false
 
 const showCzarResultButton = ref(false)
 
+/* ---------- czar rating (audience vote) ---------- */
+const ratingBarFillRef = ref<HTMLElement | null>(null)
+const ratingUiVisible = ref(false)
+
+// verdict meter shown above the black card once the rating resolves
+const ratingVerdictRef = ref<HTMLElement | null>(null)
+const ratingVerdictFillRef = ref<HTMLElement | null>(null)
+const ratingVerdictVisible = ref(false)
+
+const isCzar = computed(() => lobby.getCurrentPlayerIsCzar())
+const ratingUp = computed(() => lobby.czarRating.up)
+const ratingDown = computed(() => lobby.czarRating.down)
+const hasRated = computed(() => lobby.hasCurrentPlayerRated())
+const ratingVerdictLabel = computed(() => {
+  switch (lobby.czarRating.result) {
+    case "win": return "Grappig!"
+    case "lose": return "Niet grappig"
+    case "tie": return "Gelijkspel"
+    default: return ""
+  }
+})
+
+// scoreboard-sequence handoff state (set during the reveal, used when the
+// scoreboard is shown either immediately or after the rating resolves)
+let mergedCardsForScore: HTMLElement[] = []
+let scoreboardShiftXVal = 0
+let scoreboardOffsetVal = 240
+let ratingCountdownFrame: number | null = null
+let scoreboardSequenceStarted = false
+const ratingStickerEls: HTMLElement[] = []
+
 type ScoreboardEntry = {
   id: string
   name: string
@@ -72,6 +105,7 @@ type ScoreboardEntry = {
   displayPoints: number
   isCzar: boolean
   isWinner: boolean
+  pointsLostThisRound: number
 }
 
 const scoreboardWrapRef = ref<HTMLElement | null>(null)
@@ -142,12 +176,20 @@ function sortEntriesByPoints(entries: ScoreboardEntry[], key: "oldPoints" | "new
   })
 }
 
+function formatDelta(delta: number) {
+  return `${delta > 0 ? "+" : "−"}${Math.abs(delta)} pts`
+}
+
 function getRoundPointDelta(playerId: string) {
   const winnerId = selectedEntry.value?.playerId ?? null
   const czarId = lobby.getCurrentCzar()?.id ?? null
   let delta = 0
   if (winnerId && playerId === winnerId) delta += POINTS_CZAR_PICKED
-  if (czarId && playerId === czarId) delta += POINTS_CZAR_SELECT
+  if (czarId && playerId === czarId) {
+    delta += POINTS_CZAR_SELECT
+    // audience approved the czar's pick → bonus on top of the base point
+    if (lobby.czarRating.resolved) delta += lobby.czarRating.bonus
+  }
   return delta
 }
 
@@ -157,9 +199,15 @@ function buildScoreboardEntries() {
   const fallbackSnapshot = new Map(lobby.players.map((player) => [player.id, Number(player.points) || 0]))
   const snapshot = roundPointsSnapshot.value.size ? roundPointsSnapshot.value : fallbackSnapshot
   const entries = lobby.players.map((player) => {
-    const oldPoints = snapshot.get(player.id) ?? (Number(player.points) || 0)
-    const pointsDelta = getRoundPointDelta(player.id)
-    const newPoints = oldPoints + pointsDelta
+    // points already deducted for this round's swaps are baked into the snapshot;
+    // start the count-up from the true round-start value and net the swap cost
+    // back out of the shown delta (e.g. won +5 but swapped once → +4).
+    const lost = Number(player.pointsLostThisRound) || 0
+    const award = getRoundPointDelta(player.id)
+    const snapPoints = snapshot.get(player.id) ?? (Number(player.points) || 0)
+    const oldPoints = snapPoints + lost
+    const pointsDelta = award - lost
+    const newPoints = snapPoints + award
     return {
       id: player.id,
       name: player.name,
@@ -169,6 +217,7 @@ function buildScoreboardEntries() {
       displayPoints: oldPoints,
       isCzar: player.id === czarId,
       isWinner: Boolean(winnerId && player.id === winnerId),
+      pointsLostThisRound: lost,
     }
   })
 
@@ -251,7 +300,7 @@ async function animateScoreboardReorder(onDone?: () => void) {
 
 function animateScoreAwards() {
   const awards = scoreboardEntries.value
-    .filter((entry) => entry.pointsDelta > 0)
+    .filter((entry) => entry.pointsDelta !== 0)
     .map((entry) => scoreAwardRefs.get(entry.id))
     .filter(Boolean) as HTMLElement[]
   if (!awards.length) return
@@ -553,6 +602,11 @@ function resetCzarResultAnimation() {
   clearBlackCardTyping()
   cleanupCzarResultElements()
   resetScoreboardAnimation()
+  endRatingUi()
+  clearRatingStickers()
+  ratingVerdictVisible.value = false
+  scoreboardSequenceStarted = false
+  mergedCardsForScore = []
 
   if (transitionEls.value.length) gsap.set(transitionEls.value, { clearProps: "all" })
   if (czarResultPlayerRef.value) gsap.set(czarResultPlayerRef.value, { clearProps: "all" })
@@ -621,6 +675,11 @@ async function startCzarResultAnimation() {
   const offset = hasWhiteCardIntro ? Math.round(rect.width / 2 + gap / 2) : 0
   const scoreboardShiftX = Math.round(Math.min(Math.max(rect.width * 0.35, 120), 200))
   const scoreboardOffset = Math.round(Math.min(Math.max(rect.width * 0.75, 200), window.innerWidth * 0.3))
+
+  // hand these to the scoreboard sequence, which may run now or after the rating
+  mergedCardsForScore = mergedCards
+  scoreboardShiftXVal = scoreboardShiftX
+  scoreboardOffsetVal = scoreboardOffset
 
   transitionEls.value.forEach((el, idx) => {
     tl.fromTo(
@@ -744,42 +803,178 @@ async function startCzarResultAnimation() {
       { y: 0, autoAlpha: 1, duration: 0.5, ease: "power2.out", delay: 0.2 },
       spinEnd + 0.65
     )
-    .to(
-      mergedCards,
-      {
-        x: -scoreboardShiftX,
-        duration: 0.45,
-        ease: "power2.out",
-      },
-      scoreboardStart
-    )
-    .to(
-      czarResultPlayerRef.value,
-      {
-        x: -scoreboardShiftX,
-        duration: 0.45,
-        ease: "power2.out",
-      },
-      scoreboardStart
-    )
-    .call(() => {
-      scoreboardOffsetX.value = scoreboardOffset
-      startScoreboardAnimation()
-    }, [], scoreboardStart + 0.1)
-    .call(() => {
-      showCzarResultButton.value = true
-    }, [], spinEnd + 0.65)
-    .fromTo(
-      czarNextRoundButton.value,
-      { y: 60, autoAlpha: 0 },
-      { y: 0, autoAlpha: 1, duration: 0.5, ease: "power2.out", delay: 0.2 },
-      spinEnd + 2.35
-    )
+    // gate: either run the audience rating first, or go straight to the scoreboard
+    .call(() => onRevealComplete(), [], scoreboardStart)
 
   czarResultStarting = false
 }
 
+/**
+ * Called once the chosen-card reveal has finished. When the server has started
+ * an audience rating for this round we show the thumbs UI and wait for the
+ * result; otherwise we drop straight into the scoreboard as before.
+ */
+function onRevealComplete() {
+  if (lobby.czarRating.active && !lobby.czarRating.resolved) {
+    beginRatingUi()
+    return
+  }
+  playScoreboardSequence()
+}
+
+/** Slides the cards aside and reveals the animated scoreboard + next button. */
+function playScoreboardSequence() {
+  if (scoreboardSequenceStarted) return
+  scoreboardSequenceStarted = true
+  fadeOutRatingStickers()
+  const tl = gsap.timeline()
+  if (mergedCardsForScore.length) {
+    tl.to(mergedCardsForScore, { x: -scoreboardShiftXVal, duration: 0.45, ease: "power2.out" }, 0)
+  }
+  if (czarResultPlayerRef.value) {
+    tl.to(czarResultPlayerRef.value, { x: -scoreboardShiftXVal, duration: 0.45, ease: "power2.out" }, 0)
+  }
+  tl.call(() => {
+    scoreboardOffsetX.value = scoreboardOffsetVal
+    startScoreboardAnimation()
+  }, [], 0.1)
+  tl.call(() => {
+    showCzarResultButton.value = true
+  }, [], 0.1)
+  // once the cards have settled in their scoreboard position, reveal the
+  // verdict meter above the black card (no-op when there was no rating)
+  tl.call(() => showRatingVerdict(), [], 0.5)
+  tl.fromTo(
+    czarNextRoundButton.value,
+    { y: 60, autoAlpha: 0 },
+    { y: 0, autoAlpha: 1, duration: 0.5, ease: "power2.out" },
+    1.1
+  )
+}
+
+/* ---------- czar rating UI ---------- */
+function positionRatingVerdict() {
+  const el = ratingVerdictRef.value
+  const target = blackCardContainerEl
+  if (!el || !target) return
+  const rect = target.getBoundingClientRect()
+  gsap.set(el, {
+    top: rect.top - 52,
+    left: rect.left + rect.width / 2,
+    xPercent: -50,
+    width: Math.round(rect.width),
+  })
+}
+
+// Reveal the verdict meter above the black card when the scoreboard appears.
+function showRatingVerdict() {
+  const total = lobby.czarRating.up + lobby.czarRating.down
+  if (!lobby.czarRating.resolved || total <= 0) return
+  ratingVerdictVisible.value = true
+  nextTick(() => {
+    positionRatingVerdict()
+    const pct = (lobby.czarRating.up / total) * 100
+    if (ratingVerdictFillRef.value) {
+      gsap.fromTo(ratingVerdictFillRef.value, { width: "0%" }, { width: `${pct}%`, duration: 0.7, ease: "power2.out" })
+    }
+    if (ratingVerdictRef.value) {
+      gsap.fromTo(ratingVerdictRef.value, { autoAlpha: 0, y: -10 }, { autoAlpha: 1, y: 0, duration: 0.4, ease: "power2.out" })
+    }
+  })
+}
+
+function stopRatingCountdown() {
+  if (ratingCountdownFrame !== null) {
+    cancelAnimationFrame(ratingCountdownFrame)
+    ratingCountdownFrame = null
+  }
+}
+
+function startRatingCountdown() {
+  stopRatingCountdown()
+  const fill = ratingBarFillRef.value
+  if (!fill) return
+  const durationMs = lobby.czarRating.durationMs || 30000
+  const expiresAt = lobby.czarRating.expiresAt || (Date.now() + durationMs)
+
+  const step = () => {
+    const remaining = Math.max(0, expiresAt - Date.now())
+    const pct = Math.max(0, Math.min(1, remaining / durationMs))
+    fill.style.width = `${pct * 100}%`
+    if (remaining > 0 && ratingUiVisible.value && !lobby.czarRating.resolved) {
+      ratingCountdownFrame = requestAnimationFrame(step)
+    } else {
+      ratingCountdownFrame = null
+    }
+  }
+  step()
+}
+
+function beginRatingUi() {
+  ratingUiVisible.value = true
+  nextTick(() => {
+    startRatingCountdown()
+  })
+}
+
+function endRatingUi() {
+  ratingUiVisible.value = false
+  stopRatingCountdown()
+}
+
+function clearRatingStickers() {
+  ratingStickerEls.splice(0).forEach((el) => el.remove())
+}
+
+function fadeOutRatingStickers() {
+  const els = ratingStickerEls.splice(0)
+  if (!els.length) return
+  gsap.to(els, {
+    autoAlpha: 0,
+    scale: 0.6,
+    duration: 0.35,
+    ease: "power2.in",
+    onComplete: () => els.forEach((el) => el.remove()),
+  })
+}
+
+function spawnRatingSticker(vote: "up" | "down") {
+  const target = blackCardContainerEl
+  if (!target) return
+  const rect = target.getBoundingClientRect()
+  const el = document.createElement("div")
+  el.className = `czar-rating-sticker czar-rating-sticker--${vote}`
+  el.textContent = vote === "up" ? "👍" : "👎"
+  const padX = rect.width * 0.18
+  const padY = rect.height * 0.18
+  const x = rect.left + padX + Math.random() * (rect.width - padX * 2)
+  const y = rect.top + padY + Math.random() * (rect.height - padY * 2)
+  Object.assign(el.style, {
+    position: "fixed",
+    left: `${x}px`,
+    top: `${y}px`,
+    zIndex: "90",
+    pointerEvents: "none",
+  })
+  document.body.appendChild(el)
+  ratingStickerEls.push(el)
+
+  const rot = gsap.utils.random(-22, 22)
+  gsap.fromTo(
+    el,
+    { y: -window.innerHeight * 0.45, autoAlpha: 0, scale: 1.7, rotate: rot * 2 },
+    { y: 0, autoAlpha: 1, scale: 1, rotate: rot, duration: 0.6, ease: "bounce.out" }
+  )
+  audioStore.playPop()
+}
+
+function castRatingVote(vote: "up" | "down") {
+  if (!lobby.canCurrentPlayerRate() || hasRated.value) return
+  void lobby.submitCzarRatingVote(vote)
+}
+
 function startCzarResultOutroAnimation() {
+  ratingVerdictVisible.value = false
   const original = blackCardContainerEl
   const outroTargets = original ? (whiteCardBackEl ? [original, whiteCardBackEl] : [original]) : null
 
@@ -851,6 +1046,28 @@ watch(
   }
 )
 
+// each incoming vote drops a thumbs sticker onto the black card
+watch(
+  () => lobby.czarRatingVotedTick,
+  (tick) => {
+    if (!tick) return
+    const vote = lobby.lastCzarRatingVote?.vote
+    if (!vote) return
+    spawnRatingSticker(vote)
+  }
+)
+
+// when the rating resolves, hide the rating UI and reveal the scoreboard
+watch(
+  () => lobby.czarRatingResolvedTick,
+  (tick) => {
+    if (!tick) return
+    if (lobby.phase !== "czar-result") return
+    endRatingUi()
+    playScoreboardSequence()
+  }
+)
+
 onBeforeUnmount(() => {
   czarResultOutroTl?.kill()
   czarResultOutroTl = null
@@ -866,6 +1083,9 @@ onBeforeUnmount(() => {
   resultsVisible.value = false
   showCzarResultButton.value = false
   czarResultStarting = false
+  stopRatingCountdown()
+  clearRatingStickers()
+  ratingUiVisible.value = false
 })
 </script>
 
@@ -928,18 +1148,76 @@ onBeforeUnmount(() => {
                 </span>
                 <span class="text-lg font-black">{{ entry.name }}</span>
               </div>
-              <div :ref="(el) => setScoreValueRef(el, entry.id)" class="text-xl font-black tabular-nums">
+              <div
+                :ref="(el) => setScoreValueRef(el, entry.id)"
+                class="text-xl font-black tabular-nums"
+                :title="entry.isCzar ? 'De czar krijgt altijd 1 punt voor het kiezen van een kaart.' : undefined"
+              >
                 {{ entry.displayPoints }} pts
               </div>
               <div
-                v-if="entry.pointsDelta > 0"
+                v-if="entry.pointsDelta !== 0"
                 :ref="(el) => setScoreAwardRef(el, entry.id)"
-                class="absolute -right-3 top-1/2 -translate-y-1/2 px-2 py-0.5 text-xs font-black uppercase bg-black text-white border-2 border-b-4 border-black rounded-md opacity-0"
+                class="absolute -right-3 top-1/2 -translate-y-1/2 px-2 py-0.5 text-xs font-black uppercase border-2 border-b-4 border-black rounded-md opacity-0"
+                :class="entry.pointsDelta > 0 ? 'bg-black text-white' : 'bg-red-500 text-white'"
+                :title="entry.pointsLostThisRound > 0 ? 'Er is deze ronde een kaart gewisseld (−1 punt verrekend).' : undefined"
               >
-                +{{ entry.pointsDelta }} pts
+                {{ formatDelta(entry.pointsDelta) }}
               </div>
             </li>
           </ul>
+        </div>
+      </div>
+
+      <!-- czar rating verdict meter (above the black card, shown with the scoreboard) -->
+      <div v-show="ratingVerdictVisible" ref="ratingVerdictRef" class="czar-rating-verdict fixed z-[84] pointer-events-none opacity-0">
+        <div class="flex items-center justify-between text-white font-black text-sm mb-1 px-1 drop-shadow">
+          <span class="flex items-center gap-1"><ThumbUp :size="16" /> {{ ratingUp }}</span>
+          <span class="uppercase tracking-wide">{{ ratingVerdictLabel }}</span>
+          <span class="flex items-center gap-1"><ThumbDown :size="16" /> {{ ratingDown }}</span>
+        </div>
+        <div class="czar-rating-meter">
+          <div ref="ratingVerdictFillRef" class="czar-rating-meter__fill"></div>
+        </div>
+      </div>
+
+      <!-- czar rating controls (with the progress bar below the thumbs) -->
+      <div v-show="ratingUiVisible" class="fixed left-1/2 bottom-28 -translate-x-1/2 z-[85] flex flex-col items-center gap-3">
+        <template v-if="!isCzar">
+          <div class="text-white font-black text-lg drop-shadow">Was de CZAR juist?</div>
+          <div class="flex items-center gap-6">
+            <button
+              v-show="!hasRated || lobby.czarRating.myVote === 'up'"
+              type="button"
+              class="czar-rating-btn czar-rating-btn--up"
+              :disabled="hasRated"
+              @click="castRatingVote('up')"
+            >
+              <ThumbUp :size="42" />
+            </button>
+            <button
+              v-show="!hasRated || lobby.czarRating.myVote === 'down'"
+              type="button"
+              class="czar-rating-btn czar-rating-btn--down"
+              :disabled="hasRated"
+              @click="castRatingVote('down')"
+            >
+              <ThumbDown :size="42" />
+            </button>
+          </div>
+        </template>
+        <template v-else>
+          <div class="flex items-center gap-4 bg-black/50 px-5 py-3 rounded-xl text-white font-black text-lg">
+            <span>Het publiek beoordeelt je keuze…</span>
+            <span class="flex items-center gap-2">
+              <ThumbUp :size="20" /> {{ ratingUp }}
+              <ThumbDown :size="20" /> {{ ratingDown }}
+            </span>
+          </div>
+        </template>
+
+        <div class="czar-rating-bar w-72 pointer-events-none">
+          <div ref="ratingBarFillRef" class="czar-rating-bar__fill"></div>
         </div>
       </div>
 

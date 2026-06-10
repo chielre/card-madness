@@ -8,7 +8,7 @@ import {
     blackCardExists,
     pickFairWhiteCard
 } from '../utils/cards.js'
-import { POINTS_CZAR_PICKED, POINTS_CZAR_SELECT } from '../config/points.js'
+import { POINTS_CZAR_PICKED, POINTS_CZAR_SELECT, POINTS_CARD_SWAP_COST, POINTS_CZAR_RATING_BONUS } from '../config/points.js'
 import { normalizeLobbySettings } from '../config/lobbySettings.js'
 
 const MAX_PLAYER_NAME_LENGTH = 25
@@ -40,9 +40,6 @@ const DEFAULT_CARD_NAME_POOL = [
 ]
 const countNameSlots = (text) => (text?.match(/:name/g) ?? []).length
 const buildCardNamePool = (game) => {
-    const settings = normalizeLobbySettings(game?.settings)
-    if (!settings.personalizeCards) return DEFAULT_CARD_NAME_POOL
-
     const playerNames = (game?.players ?? [])
         .map((player) => normalizeName(player?.name))
         .filter(Boolean)
@@ -83,10 +80,14 @@ export const createGame = ({ games, hostId, hostName, language, settings }) => {
             white_cards: [],
             eligibleFromRound: 1,
             points: 0,
+            pointsLost: 0,
+            pointsLostThisRound: 0,
         }],
         language: hostLanguage,
         phase: 'lobby',
         currentRound: 0,
+        gameRound: 0,
+        czarQueue: [],
         rounds: {},
         selectedPacks: [],
         settings: normalizeLobbySettings(settings),
@@ -113,21 +114,19 @@ const isPlayerEligibleForRound = (player, roundNumber) =>
 export const prepareGame = async ({ games, lobbyId }) => {
     const game = games.get(lobbyId)
     if (!game) return { error: "not_found" }
-    const settings = ensureLobbySettings(game)
+    ensureLobbySettings(game)
 
     if (!game.selectedPacks || !game.selectedPacks.length) {
         game.selectedPacks = getPacks().map(p => p.id)
     }
 
-    // 1) Create configured amount of rounds
+    // Reset the round engine. Turns (game.rounds) are created lazily as we go,
+    // because the total number of turns depends on how many game rounds are
+    // configured AND how many players are in the lobby each game round.
     game.rounds = {}
-    for (let r = 1; r <= settings.roundCount; r++) {
-        game.rounds[r] = {
-            cardSelector: { player: null, selectedCard: {} },
-            blackCard: null,
-            playerSelectedCards: [],
-        }
-    }
+    game.currentRound = 0
+    game.gameRound = 0
+    game.czarQueue = []
 
     games.set(lobbyId, game)
 
@@ -237,6 +236,8 @@ export const joinGame = ({ games, lobbyId, player }) => {
         white_cards: [],
         eligibleFromRound: getEligibleFromRound(game),
         points: 0,
+        pointsLost: 0,
+        pointsLostThisRound: 0,
     }
 
     game.players.push(nextPlayer)
@@ -368,32 +369,85 @@ export const pickNextCardSelector = (game, round) => {
     return players[idx]?.id ?? null
 }
 
-export const setRound = ({ games, lobbyId, to }) => {
+const ensureRoundEngineState = (game) => {
+    if (typeof game.gameRound !== 'number') game.gameRound = 0
+    if (!Array.isArray(game.czarQueue)) game.czarQueue = []
+}
+
+// The set of players that will each be czar once during a game round.
+// Snapshotted when a game round starts, so players who join mid-round are
+// excluded from the current game round and only join the next one.
+const buildCzarQueueForGameRound = (game) => (game.players ?? []).map((p) => p.id)
+
+/**
+ * Decides the czar/turn for the next step of the game.
+ * One "game round" = every player in the snapshot has been czar once.
+ * `settings.roundCount` controls how many game rounds are played.
+ *
+ * Mutates game.gameRound / game.czarQueue. Returns:
+ *  - { done: true } when the game is over (all game rounds completed)
+ *  - { done: false, turn, czarId, gameRound } for the next turn to play
+ */
+export const planNextTurn = ({ games, lobbyId }) => {
+    const game = games.get(lobbyId)
+    if (!game) return { error: "not_found" }
+    const settings = ensureLobbySettings(game)
+    ensureRoundEngineState(game)
+
+    // drop any queued czars that have since left
+    const presentIds = new Set((game.players ?? []).map((p) => p.id))
+    game.czarQueue = game.czarQueue.filter((id) => presentIds.has(id))
+
+    if (game.czarQueue.length === 0) {
+        // current game round finished -> start a new one (or end the game)
+        if ((Number(game.gameRound) || 0) >= settings.roundCount) {
+            games.set(lobbyId, game)
+            return { done: true }
+        }
+        game.gameRound = (Number(game.gameRound) || 0) + 1
+        game.czarQueue = buildCzarQueueForGameRound(game)
+        if (game.czarQueue.length === 0) {
+            games.set(lobbyId, game)
+            return { done: true } // no players left
+        }
+    }
+
+    const czarId = game.czarQueue.shift()
+    const turn = (Number(game.currentRound) || 0) + 1
+    games.set(lobbyId, game)
+    return { done: false, turn, czarId, gameRound: game.gameRound }
+}
+
+export const setRound = ({ games, lobbyId, to, czarId = null }) => {
     const game = games.get(lobbyId)
     if (!game) return { error: "not_found" }
 
-    if (!hasRound(game, to)) return { error: "round_not_found" }
-
-    prepareRound({ games, lobbyId, round: to })
+    const prepRes = prepareRound({ games, lobbyId, round: to, czarId })
+    if (prepRes?.error) return prepRes
 
     game.currentRound = to
+    // reset per-round swap tracking so the scoreboard delta is round-scoped
+    game.players?.forEach((p) => { p.pointsLostThisRound = 0 })
     games.set(lobbyId, game)
 
     return { game }
 }
 
-export const prepareRound = ({ games, lobbyId, round }) => {
+export const prepareRound = ({ games, lobbyId, round, czarId = null }) => {
     const game = games.get(lobbyId)
     if (!game) return { error: "not_found" }
 
-    if (!hasRound(game, round)) return { error: "round_not_found" }
+    game.rounds = game.rounds ?? {}
+    // turns are created lazily; reuse an existing entry if we're re-running a turn
+    const targetRound = game.rounds[round] ?? {
+        cardSelector: { player: null, selectedCard: {} },
+        blackCard: null,
+        playerSelectedCards: [],
+    }
 
-
-    const targetRound = game.rounds[round]
-
-    // 1) select next card selector (next in line)
+    // 1) select the card selector (czar) for this turn
     targetRound.cardSelector = {
-        player: pickNextCardSelector(game, round),
+        player: czarId ?? pickNextCardSelector(game, round),
         selectedCard: {},
     }
 
@@ -490,6 +544,64 @@ export const unselectPlayerCard = ({ games, lobbyId, playerId, card }) => {
     games.set(lobbyId, game)
 
     return { game, round, playerSelectedCard: { playerId, card } }
+}
+
+/**
+ * Swap one card from a player's hand for a freshly dealt one, at the cost of points.
+ * Follows the CAH house rule: trading in a card costs one awarded point.
+ */
+export const swapPlayerCard = async ({ games, lobbyId, playerId, card, handSize = 5, uniquePerGame = true }) => {
+    const game = games.get(lobbyId)
+    if (!game) return { error: "not_found" }
+
+    // only possible during an active selection round
+    if (game.phase !== 'board') return { error: "round_not_active" }
+
+    // card swapping can be disabled via the lobby settings
+    if (!ensureLobbySettings(game).cardSwapEnabled) return { error: "swap_disabled" }
+
+    const roundNumber = game.currentRound
+    const round = game.rounds?.[roundNumber]
+    if (!round) return { error: "round_not_found" }
+
+    const player = game.players?.find((p) => p.id === playerId)
+    if (!player) return { error: "player_not_found" }
+    if (!isPlayerEligibleForRound(player, game.currentRound)) {
+        return { error: "player_waiting" }
+    }
+
+    // the card selector (czar) does not play a hand this round
+    if (round.cardSelector?.player === playerId) return { error: "card_selector_cannot_select" }
+
+    // a swap costs points; players with too few points cannot swap
+    const cost = POINTS_CARD_SWAP_COST
+    if ((Number(player.points) || 0) < cost) return { error: "not_enough_points" }
+
+    // the card must be in the player's current hand
+    player.white_cards = player.white_cards ?? []
+    const idx = player.white_cards.findIndex((c) => c.pack === card?.pack && c.card_id === card?.card_id)
+    if (idx < 0) return { error: "card_not_found" }
+
+    // the card that is currently played/selected this round cannot be swapped
+    const selectedEntry = (round.playerSelectedCards ?? []).find((c) => c.playerId === playerId)
+    if (selectedEntry?.card && selectedEntry.card.pack === card.pack && selectedEntry.card.card_id === card.card_id) {
+        return { error: "card_in_play" }
+    }
+
+    // remove the card and charge the player
+    const [removed] = player.white_cards.splice(idx, 1)
+    player.points = (Number(player.points) || 0) - cost
+    player.pointsLost = (Number(player.pointsLost) || 0) + cost
+    player.pointsLostThisRound = (Number(player.pointsLostThisRound) || 0) + cost
+    games.set(lobbyId, game)
+
+    // deal a replacement so the player keeps a full hand
+    const dealRes: any = await givePlayerOneWhiteCard({ games, lobbyId, playerId, uniquePerGame, maxHandSize: handSize })
+    if (dealRes?.error) return { error: dealRes.error }
+
+    const updatedGame = games.get(lobbyId)
+    const updatedPlayer = updatedGame?.players?.find((p) => p.id === playerId)
+    return { game: updatedGame, player: updatedPlayer, removed, newCard: dealRes?.card ?? null }
 }
 
 export const lockPlayerSelection = ({ games, lobbyId, playerId }) => {
@@ -711,12 +823,85 @@ export const selectCzarCard = ({ games, lobbyId, playerId, entry }) => {
     return { game, round, selected: match }
 }
 
+// The "audience" that may rate the czar's pick: everyone except the czar.
+const getRatingAudience = (game, czarId) =>
+    (game?.players ?? []).filter((p) => p.id !== czarId)
+
+/**
+ * Records an audience thumbs up/down vote on the czar's chosen card.
+ * Only valid during czar-result while a rating is active and unresolved.
+ */
+export const recordCzarRatingVote = ({ games, lobbyId, playerId, vote }) => {
+    if (vote !== 'up' && vote !== 'down') return { error: 'invalid_vote' }
+
+    const game = games.get(lobbyId)
+    if (!game) return { error: 'not_found' }
+    if (game.phase !== 'czar-result') return { error: 'invalid_phase' }
+
+    const round = game.rounds?.[game.currentRound]
+    const rating = round?.czarRating
+    if (!rating?.active) return { error: 'rating_not_active' }
+    if (rating.resolved) return { error: 'rating_resolved' }
+
+    const czarId = round.cardSelector?.player
+    if (playerId === czarId) return { error: 'czar_cannot_vote' }
+
+    const player = game.players?.find((p) => p.id === playerId)
+    if (!player) return { error: 'player_not_found' }
+    if (rating.votes[playerId]) return { error: 'already_voted' }
+
+    rating.votes[playerId] = vote
+    const values = Object.values(rating.votes)
+    rating.up = values.filter((v) => v === 'up').length
+    rating.down = values.filter((v) => v === 'down').length
+
+    const audience = getRatingAudience(game, czarId)
+    const allVoted = audience.length > 0 && audience.every((p) => rating.votes[p.id])
+
+    games.set(lobbyId, game)
+    return { game, round, up: rating.up, down: rating.down, allVoted }
+}
+
+/**
+ * Resolves the czar rating: a strict majority of thumbs up awards the czar a
+ * bonus on top of their base point. Ties and majority-down award no bonus.
+ */
+export const resolveCzarRating = ({ games, lobbyId }) => {
+    const game = games.get(lobbyId)
+    if (!game) return { error: 'not_found' }
+
+    const round = game.rounds?.[game.currentRound]
+    const rating = round?.czarRating
+    if (!rating) return { error: 'no_rating' }
+    if (rating.resolved) return { alreadyResolved: true }
+
+    const { up, down } = rating
+    const result = up > down ? 'win' : down > up ? 'lose' : 'tie'
+    const bonus = result === 'win' ? POINTS_CZAR_RATING_BONUS : 0
+    const czarId = round.cardSelector?.player
+
+    if (bonus > 0 && czarId) {
+        const czar = game.players?.find((p) => p.id === czarId)
+        if (czar) czar.points = (Number(czar.points) || 0) + bonus
+    }
+
+    rating.active = false
+    rating.resolved = true
+    rating.result = result
+    rating.bonus = bonus
+    games.set(lobbyId, game)
+
+    return { game, round, result, up, down, bonus, czarId }
+}
+
 const resetPlayerForLobby = (player) => ({
     ...player,
     ready: false,
     white_cards: [],
     eligibleFromRound: 1,
     points: 0,
+    pointsLost: 0,
+    pointsLostThisRound: 0,
 })
 
 export const resetGameForLobby = ({ games, lobbyId }) => {
@@ -725,6 +910,8 @@ export const resetGameForLobby = ({ games, lobbyId }) => {
 
     game.settings = ensureLobbySettings(game)
     game.currentRound = null
+    game.gameRound = 0
+    game.czarQueue = []
     game.rounds = null
     game.selectedPacks = []
     game.players = (game.players ?? []).map(resetPlayerForLobby)

@@ -17,7 +17,7 @@ const environment = {
     WS_HOST: process.env.SERVER_WS_HOST || "127.0.0.1",
     WS_PORT: Number(process.env.SERVER_WS_PORT || 3001),
     WS_ORIGINS: process.env.SERVER_WS_ORIGINS?.split(",").map(o => o.trim()).filter(Boolean) || [""],
-    METRICS_ENABLED: TRUTHY.has(String(process.env.METRCIS_ENABLED ?? "").toLowerCase()),
+    METRICS_ENABLED: TRUTHY.has(String(process.env.METRICS_ENABLED ?? "").toLowerCase()),
     METRICS_HOST: process.env.METRICS_HOST || "127.0.0.1",
     METRICS_PORT: Number(process.env.METRICS_PORT || 9100),
 }

@@ -36,6 +36,7 @@ export const transitionPhase = ({ games, io, lobbyId, to }) => {
             io.to(lobbyId).emit('board:round-updated', {
                 currentRound: null,
                 roundNumber: null,
+                gameRound: null,
             })
             resetRes.game.players?.forEach((player) => {
                 io.to(player.id).emit('room:player-cards-updated', { cards: player.white_cards ?? [] })

@@ -4,7 +4,7 @@ import { spawn } from "node:child_process"
 export async function updatePacksOnStart() {
     const TRUTHY = new Set(["1", "true", "yes", "on"])
 
-    const enabled = TRUTHY.has(String(process.env.PACKS_UPDATE_ON_SERVER_START ?? "").toLowerCase())
+    const enabled = TRUTHY.has(String(process.env.COMMUNITY_PACKS_UPDATE_ON_SERVER_START ?? "").toLowerCase())
     if (!enabled) return
 
     const projectRoot = path.resolve(process.cwd(), "..")
