@@ -1,5 +1,6 @@
 // cards.ts
 import { getPackById } from "@/utils/packs"
+import { getActiveLanguage } from "@/utils/activeLanguage"
 
 type CardPackRaw = { black: string[]; white: string[] }
 
@@ -100,9 +101,13 @@ function formatAnswerHtml(answerHtml?: string) {
     return `<span class="card-answer">${value}</span>`
 }
 
-function hydrate(text: string, name?: string, names?: string[], answerHtml?: string) {
+function hydrate(text: string, name?: string, names?: string[], answerHtml?: string | string[]) {
     let nameIndex = 0
+    let answerIndex = 0
     const hasNames = Array.isArray(names) && names.length > 0
+    // Each :answer slot consumes the next entry of the answer array (mirrors :name).
+    // A bare string fills every slot with the same value (legacy single-answer callers).
+    const answers = Array.isArray(answerHtml) ? answerHtml : null
     return text
         .replace(/:name/g, () => {
             if (hasNames) {
@@ -112,10 +117,22 @@ function hydrate(text: string, name?: string, names?: string[], answerHtml?: str
             }
             return formatName(name)
         })
-        .replace(/:answer/g, formatAnswerHtml(answerHtml))
+        .replace(/:answer/g, () => {
+            const value = answers ? answers[answerIndex] : (answerHtml as string | undefined)
+            answerIndex += 1
+            return formatAnswerHtml(value)
+        })
 }
 
-export function resolveWhiteCards(cards: WhiteCardInput[], language = DEFAULT_LANGUAGE): ResolvedCard[] {
+/** Number of :answer slots a black card has (= the size of the set it expects). */
+export function getBlackCardAnswerCount(card: BlackCardInput, language = getActiveLanguage()): number {
+    const cardsByPack = getCardsByPack(language)
+    const text = cardsByPack[card.pack]?.black?.[card.card_id]
+    if (!text) return 0
+    return (text.match(/:answer/g) ?? []).length
+}
+
+export function resolveWhiteCards(cards: WhiteCardInput[], language = getActiveLanguage()): ResolvedCard[] {
     const cardsByPack = getCardsByPack(language)
 
     return cards.map(({ pack, card_id, name, names }) => {
@@ -131,7 +148,7 @@ export function resolveWhiteCards(cards: WhiteCardInput[], language = DEFAULT_LA
     })
 }
 
-export function resolveBlackCard(card: BlackCardInput, answerHtml?: string, language = DEFAULT_LANGUAGE): ResolvedCard {
+export function resolveBlackCard(card: BlackCardInput, answerHtml?: string | string[], language = getActiveLanguage()): ResolvedCard {
     const cardsByPack = getCardsByPack(language)
 
     if (!getPackById(card.pack)) throw new Error(`Unknown pack: ${card.pack}`)

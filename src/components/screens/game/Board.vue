@@ -87,39 +87,183 @@ const {
     lockBoostPulseMs: LOCK_BOOST_PULSE_MS,
 })
 
+/* ---------- play set (one drop slot per :answer of the black card) ---------- */
+// Number of white cards the player must play this round = the black card's answer count.
+const answerCount = computed(() => lobby.getCurrentBlackCardAnswerCount())
+
+function slotEls(): HTMLElement[] {
+    if (!playRef.value) return []
+    return Array.from(playRef.value.querySelectorAll<HTMLElement>(".play-slot"))
+}
+function slotCardEl(slot: HTMLElement): HTMLElement | null {
+    return slot.querySelector<HTMLElement>(".draggable-card")
+}
+function playCardEls(): HTMLElement[] {
+    // cards in slot order (so the set keeps the answer order)
+    return slotEls()
+        .map((slot) => slotCardEl(slot))
+        .filter((el): el is HTMLElement => !!el)
+}
+function slotForPoint(x: number, y: number): HTMLElement | null {
+    const els = document.elementsFromPoint(x, y)
+    for (const slot of slotEls()) {
+        if (els.some((el) => el === slot || slot.contains(el))) return slot
+    }
+    return null
+}
+function firstEmptySlot(): HTMLElement | null {
+    return slotEls().find((slot) => !slotCardEl(slot)) ?? null
+}
+function isSetComplete() {
+    const slots = slotEls()
+    return slots.length > 0 && slots.every((slot) => !!slotCardEl(slot))
+}
+function orderedPlacedCards() {
+    return playCardEls()
+        .map((el) => getCardFromEl(el))
+        .filter((c): c is NonNullable<typeof c> => !!c)
+}
+function setKeyOf(cards: { pack: string; card_id: number | string }[]) {
+    return cards.map((c) => `${c.pack}:${c.card_id}`).join("|")
+}
+// the composition of the set most recently sent to the server (null = nothing submitted)
+let lastEmittedSetKey: string | null = null
+
+function clearPlayOverState() {
+    if (!playRef.value) return
+    playRef.value.classList.remove("play-set--over")
+    playRef.value.querySelectorAll(".play-slot").forEach((s) => s.classList.remove("play-slot--over"))
+}
+
 /* ---------- board helpers ---------- */
 function syncPlaySlotState() {
     if (!playRef.value) return
-    const hasCard = !!playRef.value.querySelector(".draggable-card")
-    if (!hasCard) playRef.value.classList.remove("has-card")
-    playRef.value.classList.toggle("has-card", hasCard)
+    slotEls().forEach((slot) => slot.classList.toggle("is-filled", !!slotCardEl(slot)))
+}
+
+// Guarantee a clean play-set DOM after a drag: Sortable can leave a card as a stray
+// direct child of the play-set or briefly double up a slot. Any card that is not the
+// single occupant of a slot is sent back to the hand, so slot occupancy (and therefore
+// the placeholders + isSetComplete) always reflects reality.
+function normalizePlayArea() {
+    if (!playRef.value || !handRef.value) return
+    Array.from(playRef.value.children).forEach((child) => {
+        const el = child as HTMLElement
+        if (el.classList?.contains("draggable-card")) {
+            setCardPlacement(el, false)
+            handRef.value!.appendChild(el)
+        }
+    })
+    slotEls().forEach((slot) => {
+        const cards = Array.from(slot.querySelectorAll(".draggable-card")) as HTMLElement[]
+        cards.slice(1).forEach((extra) => {
+            setCardPlacement(extra, false)
+            handRef.value!.appendChild(extra)
+        })
+    })
 }
 
 function setCardPlacement(el: HTMLElement, inPlay: boolean) {
+    el.classList.toggle("card-responsive", inPlay)
+    el.classList.toggle("card-sm", !inPlay)
+    el.style.removeProperty("--p-tx")
+    el.style.removeProperty("--p-ty")
+    el.style.removeProperty("--p-rot")
+
     if (inPlay) {
-        el.classList.remove("card-sm")
-        el.classList.add("card-responsive")
+        // pin the card to fill its slot exactly (inline beats any card sizing rule)
+        el.style.setProperty("transform", "none")
         el.style.setProperty("position", "absolute")
-        el.style.setProperty("left", "50%")
-        el.style.setProperty("top", "50%")
-        el.style.setProperty("transform", "translate(-50%, -50%)")
-        el.style.removeProperty("--p-tx")
-        el.style.removeProperty("--p-ty")
-        el.style.removeProperty("--p-rot")
-        return
+        el.style.setProperty("left", "0")
+        el.style.setProperty("top", "0")
+        el.style.setProperty("right", "0")
+        el.style.setProperty("bottom", "0")
+        el.style.setProperty("width", "100%")
+        el.style.setProperty("height", "100%")
+        el.style.setProperty("margin", "0")
+        el.style.setProperty("aspect-ratio", "auto")
+    } else {
+        el.style.removeProperty("transform")
+        el.style.removeProperty("position")
+        el.style.removeProperty("left")
+        el.style.removeProperty("top")
+        el.style.removeProperty("right")
+        el.style.removeProperty("bottom")
+        el.style.removeProperty("width")
+        el.style.removeProperty("height")
+        el.style.removeProperty("margin")
+        el.style.removeProperty("aspect-ratio")
     }
-    el.classList.remove("card-responsive")
-    el.classList.add("card-sm")
-    el.style.removeProperty("position")
-    el.style.removeProperty("left")
-    el.style.removeProperty("top")
-    el.style.removeProperty("transform")
 }
 
 function clearPlaySlot() {
     if (!playRef.value) return
     playRef.value.querySelectorAll(".draggable-card").forEach((el) => el.remove())
+    lastEmittedSetKey = null
     syncPlaySlotState()
+}
+
+// Sync the server to the actual slot state after any drag:
+//  - set complete & changed  -> submit the set + (re)start the lock timer
+//  - set incomplete & was submitted -> retract it + stop the lock timer
+// Runs in both directions so removing a card always cancels the selection.
+function reconcileSet() {
+    const currentId = currentPlayerId.value
+    if (!currentId) return
+    if (isCardLocked(currentId)) return
+
+    if (isSetComplete()) {
+        const placed = orderedPlacedCards()
+        const key = setKeyOf(placed)
+        if (key === lastEmittedSetKey) return
+        lastEmittedSetKey = key
+        lobby.queueSelectedCards(placed)
+        const durationMs = lobby.selectionLockDurationMs || CARD_LOCK_WINDOW_MS
+        startPendingSelection(currentId, durationMs)
+        return
+    }
+
+    // not complete: if we had a submitted set, take it back
+    if (lastEmittedSetKey !== null) {
+        lastEmittedSetKey = null
+        const placed = orderedPlacedCards()
+        lobby.queueUnselectedCard(placed[0] ?? ({ pack: "", card_id: -1 } as any))
+        clearPendingSelection(currentId)
+    }
+}
+
+function findOwnCardEl(card: { pack: string; card_id: number | string }): HTMLElement | null {
+    const sel = `.draggable-card[data-pack="${card.pack}"][data-card-id="${card.card_id}"]`
+    return (playRef.value?.querySelector(sel) as HTMLElement | null)
+        ?? (handRef.value?.querySelector(sel) as HTMLElement | null)
+}
+
+// The server rejected our take-back (the set locked the instant before we grabbed
+// it, or the round advanced). We already pulled the card back into the hand, so put
+// the authoritative set back into the play slots and re-lock it locally.
+function handleUnselectRejected(tick: number) {
+    if (!tick) return
+    if (lobby.phase !== "board") return
+    const currentId = currentPlayerId.value
+    if (!currentId || !playRef.value) return
+
+    const entry = lobby.currentRound?.playerSelectedCards?.find((e) => e.playerId === currentId)
+    const cards = entry?.cards ?? []
+    if (!cards.length) return
+
+    const slots = slotEls()
+    cards.forEach((card, i) => {
+        const slot = slots[i]
+        if (!slot) return
+        const el = findOwnCardEl(card)
+        if (!el) return
+        slot.appendChild(el)
+        setCardPlacement(el, true)
+    })
+    lastEmittedSetKey = setKeyOf(cards)
+    syncPlaySlotState()
+
+    if (entry?.locked) clearPendingSelection(currentId)
 }
 
 function onCzarRevealReady(ready: boolean) {
@@ -143,6 +287,8 @@ const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(ma
 const hypot = (x: number, y: number) => Math.sqrt(x * x + y * y)
 
 const drag = { source: null as HTMLElement | null, mirror: null as HTMLElement | null, startInPlay: false }
+// the play-slot a card was lifted from (null when dragged from the hand)
+let dragOriginSlot: HTMLElement | null = null
 
 let lastPointerX = 0
 let lastPointerY = 0
@@ -152,6 +298,11 @@ let startX = 0
 let startY = 0
 let activePointerId: number | null = null
 let captured = false
+// A press on your own pending card may be either a tap (to lock it faster) or the
+// start of a drag to pull it back out. We only fire the lock-boost on a genuine tap
+// (pointerup without a drag) — otherwise grabbing the card to remove it would boost
+// (and could re-lock) the very set you are retracting.
+let boostCandidateId: string | null = null
 
 function applyPriming(el: HTMLElement, dx: number, dy: number) {
     const tx = clamp(dx * FOLLOW_FACTOR, -MAX_TRANSLATE, MAX_TRANSLATE)
@@ -200,7 +351,7 @@ function resetDragState() {
     drag.source = null
     drag.mirror = null
     drag.startInPlay = false
-    playRef.value?.classList.remove("play-slot--over")
+    clearPlayOverState()
     trashRef.value?.classList.remove("trash-zone--over")
     cleanupPriming()
     detachPrimingListeners()
@@ -211,7 +362,12 @@ function onPointerMove(e: PointerEvent) {
     applyPriming(primingEl, e.clientX - startX, e.clientY - startY)
 }
 
-function onPointerUp() {
+function onPointerUp(e?: Event) {
+    // a genuine tap (no drag started) on your own pending set: lock it faster
+    if (boostCandidateId && e?.type === "pointerup") {
+        lobby.requestLockBoost(boostCandidateId)
+    }
+    boostCandidateId = null
     cleanupPriming()
     detachPrimingListeners()
 }
@@ -226,8 +382,10 @@ function onPointerDown(e: PointerEvent) {
     const currentId = currentPlayerId.value
 
     if (currentId && playRef.value?.contains(el) && isUnselectBlocked(currentId)) return
+    boostCandidateId = null
     if (currentId && playRef.value?.contains(el) && isBoardPhase.value && !isCardLocked(currentId)) {
-        lobby.requestLockBoost(currentId)
+        // remember the candidate; the boost only fires if this press ends as a tap
+        boostCandidateId = currentId
     }
 
     if (e.pointerType !== "mouse") e.preventDefault()
@@ -315,13 +473,6 @@ function getCardFromEl(el: HTMLElement) {
     return lobby.getCurrentPlayerWhiteCard(pack, cardId)
 }
 
-function emitCardFromElement(el: HTMLElement, action: "selected" | "unselected") {
-    const card = getCardFromEl(el)
-    if (!card) return
-    if (action === "selected") lobby.queueSelectedCard(card)
-    else lobby.queueUnselectedCard(card)
-}
-
 function isUnselectBlocked(playerId: string | null) {
     if (!playerId) return false
     return isCardLocked(playerId)
@@ -331,11 +482,12 @@ function isUnselectBlocked(playerId: string | null) {
 let newBlackCardCloneEl: HTMLElement | null = null
 let blackCardTypingFrame: number | null = null
 
-function getAnswerTextFromHtml(html: string) {
+function getAnswerTextsFromHtml(html: string): string[] {
     const tmp = document.createElement("div")
     tmp.innerHTML = html
-    const answerEl = tmp.querySelector(".card-answer") as HTMLElement | null
-    return (answerEl?.innerText || answerEl?.textContent || "").trim()
+    return Array.from(tmp.querySelectorAll(".card-answer")).map(
+        (el) => ((el as HTMLElement).innerText || el.textContent || "").trim()
+    )
 }
 
 function clearBlackCardTyping() {
@@ -345,30 +497,35 @@ function clearBlackCardTyping() {
     }
 }
 
-function typeBlackCardAnswerText(targetText: string, durationMs: number) {
+// Types every :answer span on the black card towards its target text in parallel.
+function typeBlackCardAnswerTexts(targetTexts: string[], durationMs: number) {
     if (!BlackCardRef.value) return
     if (!czarRevealReady.value) return
     clearBlackCardTyping()
 
     BlackCardRef.value.innerHTML = blackCardTemplateHtml.value
-    const answerEl = BlackCardRef.value.querySelector(".card-answer") as HTMLElement | null
-    if (!answerEl) return
+    const answerEls = Array.from(BlackCardRef.value.querySelectorAll<HTMLElement>(".card-answer"))
+    if (!answerEls.length) return
 
-    const placeholderText = getAnswerTextFromHtml(blackCardTemplateHtml.value)
-    const currentAnswer = answerEl.textContent ?? placeholderText
-    const fromText = targetText ? placeholderText : currentAnswer
-    const toText = targetText || placeholderText
-    answerEl.textContent = fromText || placeholderText
+    const placeholders = getAnswerTextsFromHtml(blackCardTemplateHtml.value)
+    const hasTargets = targetTexts.some((t) => !!t)
+
+    const slots = answerEls.map((el, i) => {
+        const placeholder = placeholders[i] ?? ""
+        const target = targetTexts[i] ?? ""
+        const fromText = (hasTargets ? placeholder : (el.textContent ?? placeholder)) || placeholder
+        const toText = target || placeholder
+        el.textContent = fromText
+        return { el, fromText, toText }
+    })
 
     const start = performance.now()
     const step = (now: number) => {
         const t = Math.min(1, (now - start) / durationMs)
-        const count = Math.floor(fromText.length + (toText.length - fromText.length) * t)
-        if (toText.length >= fromText.length) {
-            answerEl.textContent = toText.slice(0, count)
-        } else {
-            answerEl.textContent = fromText.slice(0, count)
-        }
+        slots.forEach(({ el, fromText, toText }) => {
+            const count = Math.floor(fromText.length + (toText.length - fromText.length) * t)
+            el.textContent = toText.length >= fromText.length ? toText.slice(0, count) : fromText.slice(0, count)
+        })
         if (t < 1) {
             blackCardTypingFrame = requestAnimationFrame(step)
         } else {
@@ -379,18 +536,19 @@ function typeBlackCardAnswerText(targetText: string, durationMs: number) {
     blackCardTypingFrame = requestAnimationFrame(step)
 }
 
-function getHoverAnswerText(playerId: string) {
+function getHoverAnswerTexts(playerId: string): string[] {
     const entry = lobby.getSelectedEntryForPlayerId(playerId)
-    if (!entry?.resolved?.text) return ""
+    const resolved = entry?.resolved
+    if (!resolved || !resolved.length) return []
 
     const blackCard = lobby.currentRound?.blackCard
-    if (!blackCard) return ""
+    if (!blackCard) return []
 
     try {
-        const full = resolveBlackCard(blackCard, entry.resolved.text).text
-        return getAnswerTextFromHtml(full)
+        const full = resolveBlackCard(blackCard, resolved.map((r) => r?.text ?? "")).text
+        return getAnswerTextsFromHtml(full)
     } catch {
-        return ""
+        return []
     }
 }
 
@@ -400,11 +558,10 @@ function startCzarHoverTyping(playerId: string | null) {
     if (playerId === czarHoverPlayerId) return
     czarHoverPlayerId = playerId
     if (!playerId) {
-        typeBlackCardAnswerText("", CZAR_HOVER_TYPE_MS)
+        typeBlackCardAnswerTexts([], CZAR_HOVER_TYPE_MS)
         return
     }
-    const answerText = getHoverAnswerText(playerId)
-    typeBlackCardAnswerText(answerText, CZAR_HOVER_TYPE_MS)
+    typeBlackCardAnswerTexts(getHoverAnswerTexts(playerId), CZAR_HOVER_TYPE_MS)
 }
 
 function animateNextBlackCardIn() {
@@ -462,6 +619,7 @@ function handleRoundStarted(tick: number) {
     if (!tick) return
     if (!playRef.value) return
     playRef.value.querySelectorAll(".draggable-card").forEach((el) => el.remove())
+    lastEmittedSetKey = null
     syncPlaySlotState()
     resetPendingSelections()
     resetDragState()
@@ -493,10 +651,20 @@ function handleSelectedCardAnim(tick: number) {
     const isSync = !!lobby.lastSelectedCard?.sync
     if (playerId) {
         if (action === "selected" && lobby.phase === "board") {
-            const durationMs = lobby.selectionLockDurationMs || CARD_LOCK_WINDOW_MS
-            const expiresAt = lobby.selectionLockExpiresAt
-            const remainingMs = expiresAt ? Math.max(0, expiresAt - Date.now()) : durationMs
-            startPendingSelection(playerId, remainingMs)
+            // Ignore a stale, in-flight selection echo for our own set after we have
+            // already retracted it locally (lastEmittedSetKey === null): otherwise the
+            // late broadcast would revive a timer for a set that is no longer down.
+            const isSelf = playerId === currentPlayerId.value
+            const staleSelfEcho = isSelf && !isSync && lastEmittedSetKey === null
+            if (!staleSelfEcho) {
+                // Authoritative server values: full window for the progress bar total,
+                // remaining time (expiresAt - now) for the live countdown. This overrides
+                // the optimistic window started locally in reconcileSet().
+                const durationMs = lobby.selectionLockDurationMs || CARD_LOCK_WINDOW_MS
+                const expiresAt = lobby.selectionLockExpiresAt
+                const remainingMs = expiresAt ? Math.max(0, expiresAt - Date.now()) : durationMs
+                startPendingSelection(playerId, remainingMs, durationMs)
+            }
         }
         if (action === "unselected") clearPendingSelection(playerId)
     }
@@ -508,6 +676,8 @@ function handleSelectionLockBoost(tick: number) {
     const payload = lobby.lastSelectionLockBoost
     if (!payload?.playerId) return
     if (isCardLocked(payload.playerId)) return
+    // never revive our own timer from a late boost echo once we have retracted the set
+    if (payload.playerId === currentPlayerId.value && lastEmittedSetKey === null) return
     const remainingMs = payload.selectionLockExpiresAt
         ? Math.max(0, payload.selectionLockExpiresAt - Date.now())
         : Math.max(0, payload.selectionLockDurationMs ?? 0)
@@ -530,6 +700,7 @@ watch(() => lobby.roundStartedTick, handleRoundStarted)
 watch(() => lobby.phase, handlePhaseChange)
 watch(() => lobby.selectedCardAnimTick, handleSelectedCardAnim)
 watch(() => lobby.selectionLockBoostTick, handleSelectionLockBoost)
+watch(() => lobby.unselectRejectedTick, handleUnselectRejected)
 
 
 /* ---------- mount/unmount ---------- */
@@ -546,6 +717,9 @@ onMounted(() => {
     })
 
     sortable.on("drag:start", (evt: any) => {
+        // this press became a drag, not a tap -> cancel the pending lock-boost
+        boostCandidateId = null
+
         if (!lobby.canCurrentPlayerPlayCard()) {
             evt.cancel(); return
         }
@@ -571,13 +745,14 @@ onMounted(() => {
         drag.source = evt.source as HTMLElement
         drag.source.classList.add("drag--source")
         drag.startInPlay = playRef.value ? playRef.value.contains(drag.source) : false
+        dragOriginSlot = drag.source.closest(".play-slot") as HTMLElement | null
     })
 
     sortable.on("drag:move", (evt: any) => {
         const { x, y } = getPointerPosition(evt)
         if (playRef.value) {
-            const overPlay = isOverPlaySlot(x, y)
-            playRef.value.classList.toggle("play-slot--over", overPlay)
+            const targetSlot = slotForPoint(x, y)
+            slotEls().forEach((slot) => slot.classList.toggle("play-slot--over", slot === targetSlot))
         }
         if (trashRef.value) {
             const overTrash = isOverTrash(x, y)
@@ -585,15 +760,10 @@ onMounted(() => {
         }
     })
 
+    // we place cards into slots manually on drop; don't let Sortable reflow the play row
     sortable.on("sortable:sort", (evt: any) => {
         if (!playRef.value) return
-        if (evt.overContainer !== playRef.value) return
-
-        const source = evt.dragEvent?.source as HTMLElement | undefined
-        if (!source || playRef.value.contains(source)) return
-
-        const playCards = playRef.value.querySelectorAll(".draggable-card")
-        if (playCards.length > 0) evt.cancel()
+        if (evt.overContainer === playRef.value) evt.cancel()
     })
 
     sortable.on("mirror:created", (evt: any) => {
@@ -605,22 +775,25 @@ onMounted(() => {
         if (playRef.value && handRef.value && drag.source) {
 
             const { x, y } = getPointerPosition(evt)
-            const overPlay = isOverPlaySlot(x, y)
             const overTrash = isOverTrash(x, y)
+            const targetSlot = slotForPoint(x, y)   // the specific slot under the pointer, if any
             const wasInPlay = drag.startInPlay
             const currentId = currentPlayerId.value
             const unselectBlocked = currentId ? isUnselectBlocked(currentId) : false
-            const shouldUnselect = wasInPlay && !overPlay && !unselectBlocked
+
+            const returnToHand = () => {
+                setCardPlacement(drag.source!, false)
+                handRef.value!.appendChild(drag.source!)
+            }
 
             // drop a hand card on the trash to swap it for a new one (costs a point)
-            if (overTrash && !overPlay && !wasInPlay && canSwapCard.value) {
+            if (overTrash && !targetSlot && !wasInPlay && canSwapCard.value) {
                 const card = getCardFromEl(drag.source)
                 if (card) {
-                    handRef.value.appendChild(drag.source)
-                    setCardPlacement(drag.source, false)
+                    returnToHand()
                     animateCardToTrash(drag.source, x, y)
                     lobby.queueSwapCard(card)
-                    playRef.value.classList.remove("play-slot--over")
+                    clearPlayOverState()
                     trashRef.value?.classList.remove("trash-zone--over")
                     resetDragState()
                     syncPlaySlotState()
@@ -628,39 +801,65 @@ onMounted(() => {
                 }
             }
 
-            if (wasInPlay && unselectBlocked && !overPlay) {
-                playRef.value.appendChild(drag.source)
-                setCardPlacement(drag.source, true)
-            } else if (overPlay) {
-                const existing = playRef.value.querySelector(".draggable-card")
-                if (existing && existing !== drag.source) {
-                    setCardPlacement(drag.source, false)
-                    handRef.value.appendChild(drag.source)
-                    resetDragState()
-                    syncPlaySlotState()
-                    return
+            if (wasInPlay && unselectBlocked) {
+                // the set is locked: keep the card in play (snap to its slot or the first empty one)
+                const slot = (drag.source.closest(".play-slot") as HTMLElement | null) ?? firstEmptySlot()
+                if (slot) {
+                    slot.appendChild(drag.source)
+                    setCardPlacement(drag.source, true)
                 }
-                playRef.value.appendChild(drag.source)
-                setCardPlacement(drag.source, true)
-                emitCardFromElement(drag.source, "selected")
-                if (currentId) {
-                    const durationMs = lobby.selectionLockDurationMs || CARD_LOCK_WINDOW_MS
-                    startPendingSelection(currentId, durationMs)
+            } else if (wasInPlay) {
+                // A played card was dragged. Reposition it only if it was dropped onto a
+                // DIFFERENT slot (swapping with whatever sits there); dropping it back on
+                // its own slot or anywhere else removes it from the set. This guarantees
+                // that "drag a card out" actually empties its slot -> the placeholder
+                // returns and the set becomes incomplete (so the lock timer resets).
+                if (targetSlot && targetSlot !== dragOriginSlot) {
+                    const occupant = slotCardEl(targetSlot)
+                    if (occupant && occupant !== drag.source && dragOriginSlot) {
+                        dragOriginSlot.appendChild(occupant)
+                        setCardPlacement(occupant, true)
+                    }
+                    targetSlot.appendChild(drag.source)
+                    setCardPlacement(drag.source, true)
+                } else {
+                    returnToHand()
+                }
+            } else if (targetSlot) {
+                // a hand card dropped onto a slot: place there, or shift to the first empty slot if taken
+                const occupant = slotCardEl(targetSlot)
+                if (!occupant || occupant === drag.source) {
+                    targetSlot.appendChild(drag.source)
+                    setCardPlacement(drag.source, true)
+                } else {
+                    const empty = firstEmptySlot()
+                    if (empty) {
+                        empty.appendChild(drag.source)
+                        setCardPlacement(drag.source, true)
+                    } else {
+                        returnToHand()   // set is full
+                    }
                 }
             } else {
-                if (playRef.value.contains(drag.source)) {
-                    setCardPlacement(drag.source, false)
-                    handRef.value.appendChild(drag.source)
-                }
-                if (shouldUnselect) {
-                    emitCardFromElement(drag.source, "unselected")
-                    if (currentId) clearPendingSelection(currentId)
-                }
+                // dropped anywhere that is not a slot -> remove the card from the set
+                if (playRef.value.contains(drag.source)) returnToHand()
             }
         }
 
-        playRef.value?.classList.remove("play-slot--over")
+        clearPlayOverState()
         resetDragState()
+    })
+
+    // Slot bookkeeping must run on drag:stopped, NOT drag:stop. Shopify Draggable drags
+    // a CLONE and keeps the real node hidden in its original slot, only relocating it
+    // AFTER the drag:stop listeners run. So at drag:stop a card pulled out of a slot is
+    // still (invisibly) in that slot: reconcileSet would see the set as complete and
+    // never emit the take-back, and the placeholder would stay hidden over an empty slot.
+    // By drag:stopped the real node has reached its final slot/hand, so occupancy is true.
+    sortable.on("drag:stopped", () => {
+        normalizePlayArea()
+        // sync the server to whatever ended up in the slots (submit, re-submit, or retract)
+        reconcileSet()
         syncPlaySlotState()
     })
 
@@ -709,12 +908,13 @@ onBeforeUnmount(() => {
                     </div>
                 </div>
 
-                <div ref="boardGridRef" class="-ml-6 bg-[#2b0246] grid grid-cols-5 gap-8 w-3xl border-4 backdrop-blur-sm rounded-xl border-black p-6 transition-all" style="position: relative; perspective: 1200px">
-                    <div v-show="isRoundActive && !isCurrentPlayerCzar && !isWaitingForRound" class="play-zone">
-                        <div ref="playRef" class="play-slot">
-                            <div class="madness-card card-white card-responsive play-slot-mirror" aria-hidden="true"></div>
-                            <div class="play-placeholder border-3 border-dashed border-white/60 rounded-xl text-white/70 px-6 py-8 text-center text-sm">
-                                Sleep hier je kaart
+                <div ref="boardGridRef" class="-ml-6 bg-[#4a1a7a] grid grid-cols-5 gap-8 w-3xl border-4 backdrop-blur-sm rounded-xl border-black p-6 transition-all" style="position: relative; perspective: 1200px">
+                    <div v-show="isRoundActive && !isCurrentPlayerCzar && !isWaitingForRound" class="play-zone" :class="`play-zone--count-${answerCount}`">
+                        <div ref="playRef" class="play-set" :class="`play-set--count-${answerCount}`">
+                            <div v-for="i in answerCount" :key="i" class="play-slot" :data-slot-index="i - 1">
+                                <div class="play-placeholder border-3 border-dashed border-white/60 rounded-xl text-white/70 px-4 py-8 text-center text-sm">
+                                    {{ answerCount > 1 ? `Sleep kaart ${i}` : 'Sleep hier je kaart' }}
+                                </div>
                             </div>
                         </div>
                     </div>

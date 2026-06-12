@@ -14,9 +14,14 @@ type PendingConfig = {
   lockBoostPulseMs: number
 }
 
+// The selection-lock timer is per SET, not per card. For a multi-answer black card
+// the whole set shares one countdown: complete the set -> the timer runs; pull any
+// card out -> the set is incomplete and the timer is cleared. The visuals therefore
+// live on the set CONTAINER (the play-set for yourself, the card-set group for other
+// players) instead of on individual card elements, so cleanup is reliable even when
+// cards are dragged around.
 export function usePendingSelections({
   lobby,
-  handRef,
   playRef,
   boardGridRef,
   getCurrentPlayerId,
@@ -50,11 +55,23 @@ export function usePendingSelections({
     )
   }
 
+  // The single container element that represents a player's whole set.
+  function getPendingSetEls(playerId: string): HTMLElement[] {
+    const currentId = getCurrentPlayerId()
+    if (playerId === currentId) {
+      return playRef.value ? [playRef.value] : []
+    }
+    const remote = boardGridRef.value?.querySelector(
+      `.card-set[data-set-player-id="${playerId}"]`
+    ) as HTMLElement | null
+    return remote ? [remote] : []
+  }
+
   function ensurePendingTimerBadge(el: HTMLElement) {
-    let badge = el.querySelector(".card-pending-timer") as HTMLElement | null
+    let badge = el.querySelector(":scope > .set-pending-timer") as HTMLElement | null
     if (!badge) {
       badge = document.createElement("div")
-      badge.className = "card-pending-timer"
+      badge.className = "set-pending-timer"
       badge.setAttribute("aria-hidden", "true")
       el.appendChild(badge)
     }
@@ -62,8 +79,27 @@ export function usePendingSelections({
   }
 
   function removePendingTimerBadge(el: HTMLElement) {
-    const badge = el.querySelector(".card-pending-timer")
+    const badge = el.querySelector(":scope > .set-pending-timer")
     if (badge) badge.remove()
+  }
+
+  function ensurePendingProgressBar(el: HTMLElement) {
+    let bar = el.querySelector(":scope > .set-pending-bar") as HTMLElement | null
+    if (!bar) {
+      bar = document.createElement("div")
+      bar.className = "set-pending-bar"
+      bar.setAttribute("aria-hidden", "true")
+      const fill = document.createElement("div")
+      fill.className = "set-pending-bar__fill"
+      bar.appendChild(fill)
+      el.appendChild(bar)
+    }
+    return bar
+  }
+
+  function removePendingProgressBar(el: HTMLElement) {
+    const bar = el.querySelector(":scope > .set-pending-bar")
+    if (bar) bar.remove()
   }
 
   function updatePendingCountdown(playerId: string) {
@@ -71,7 +107,7 @@ export function usePendingSelections({
     if (!expiresAt) return
     const remainingMs = Math.max(0, expiresAt - Date.now())
     const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000))
-    getPendingCardEls(playerId).forEach((el) => {
+    getPendingSetEls(playerId).forEach((el) => {
       const badge = ensurePendingTimerBadge(el)
       badge.textContent = `${remainingSeconds}s`
     })
@@ -92,12 +128,12 @@ export function usePendingSelections({
     if (timer) clearInterval(timer)
     pendingCountdownTimers.delete(playerId)
     pendingCountdownExpiresAt.delete(playerId)
-    getPendingCardEls(playerId).forEach((el) => removePendingTimerBadge(el))
+    getPendingSetEls(playerId).forEach((el) => removePendingTimerBadge(el))
   }
 
   function startPendingProgress(playerId: string, totalMs: number, remainingMs: number) {
     const progress = totalMs > 0 ? Math.min(1, Math.max(0, remainingMs / totalMs)) : 0
-    getPendingCardEls(playerId).forEach((el) => {
+    getPendingSetEls(playerId).forEach((el) => {
       el.style.setProperty("--timer-progress", progress.toFixed(4))
       const existing = pendingProgressTweens.get(el)
       if (existing) existing.kill()
@@ -111,7 +147,7 @@ export function usePendingSelections({
   }
 
   function stopPendingProgress(playerId: string) {
-    getPendingCardEls(playerId).forEach((el) => {
+    getPendingSetEls(playerId).forEach((el) => {
       const tween = pendingProgressTweens.get(el)
       if (tween) tween.kill()
       pendingProgressTweens.delete(el)
@@ -119,32 +155,20 @@ export function usePendingSelections({
     })
   }
 
-  function getPendingCardEls(playerId: string) {
-    const els: HTMLElement[] = []
-    const currentId = getCurrentPlayerId()
-    if (playerId === currentId) {
-      const playCard = playRef.value?.querySelector(".draggable-card") as HTMLElement | null
-      if (playCard) els.push(playCard)
-    }
-    const boardCard = boardGridRef.value?.querySelector(
-      `[data-selected-player-id="${playerId}"]`
-    ) as HTMLElement | null
-    if (boardCard) els.push(boardCard)
-    return els
-  }
-
   function applyPendingVisuals(playerId: string, durationMs: number) {
     const totalMs = pendingCardTotals.get(playerId) ?? durationMs
     pendingCardTotals.set(playerId, totalMs)
-    getPendingCardEls(playerId).forEach((el) => {
-      el.classList.add("card-pending")
-      updatePendingCountdown(playerId)
+    getPendingSetEls(playerId).forEach((el) => {
+      el.classList.add("set-pending")
+      ensurePendingProgressBar(el)
+      ensurePendingTimerBadge(el)
     })
+    updatePendingCountdown(playerId)
     startPendingProgress(playerId, totalMs, durationMs)
   }
 
   function pulsePendingCard(playerId: string) {
-    getPendingCardEls(playerId).forEach((el) => {
+    getPendingSetEls(playerId).forEach((el) => {
       el.classList.remove("card-lock-boost")
       void el.offsetWidth
       el.classList.add("card-lock-boost")
@@ -155,21 +179,10 @@ export function usePendingSelections({
   }
 
   function clearPendingVisuals(playerId: string) {
-    const currentId = getCurrentPlayerId()
-    if (currentId && playerId === currentId) {
-      const removeLocalPending = (root: HTMLElement | null) => {
-        if (!root) return
-        root.querySelectorAll(".card-pending").forEach((el) => {
-          el.classList.remove("card-pending")
-          removePendingTimerBadge(el as HTMLElement)
-        })
-      }
-      removeLocalPending(handRef.value)
-      removeLocalPending(playRef.value)
-    }
-    getPendingCardEls(playerId).forEach((el) => {
-      el.classList.remove("card-pending")
+    getPendingSetEls(playerId).forEach((el) => {
+      el.classList.remove("set-pending")
       removePendingTimerBadge(el)
+      removePendingProgressBar(el)
     })
     stopPendingProgress(playerId)
   }
@@ -185,24 +198,30 @@ export function usePendingSelections({
   }
 
   function slamSelectedCard(playerId: string) {
-    const els = getPendingCardEls(playerId)
-    const target = els[0]
+    const target = getPendingSetEls(playerId)[0]
     if (!target) return
 
     gsap.killTweensOf(target)
     gsap.timeline()
-      .to(target, { scale: 1.08, rotateZ: gsap.utils.random(-4, 4), duration: 0.18, ease: "power2.out" })
-      .to(target, { y: 12, scale: 1.02, rotateZ: gsap.utils.random(-2, 2), duration: 0.15, ease: "power2.in" })
-      .to(target, { y: 0, scale: 1, rotateZ: 0, duration: 0.2, ease: "power2.out" })
+      .to(target, { scale: 1.04, duration: 0.18, ease: "power2.out" })
+      .to(target, { y: 8, scale: 1.01, duration: 0.15, ease: "power2.in" })
+      .to(target, { y: 0, scale: 1, duration: 0.2, ease: "power2.out" })
 
     wobbleTable()
   }
 
-  function startPendingSelection(playerId: string, durationMs = cardLockWindowMs) {
+  function startPendingSelection(
+    playerId: string,
+    durationMs = cardLockWindowMs,
+    totalMs = durationMs
+  ) {
     if (!playerId) return
-    if (isCardPending(playerId)) return
     if (isCardLocked(playerId)) return
-    pendingCardTotals.set(playerId, durationMs)
+    // Always (re)sync to the given duration — the optimistic local start uses a
+    // best-guess window and the authoritative server value arrives a moment later
+    // and must override it. Bailing out while already "pending" would drop that
+    // correction and freeze the countdown at the optimistic guess.
+    pendingCardTotals.set(playerId, totalMs)
     refreshPendingSelection(playerId, durationMs)
   }
 

@@ -44,7 +44,18 @@ function setCzarRevealReady(value: boolean) {
 
 function onCzarCardSelect(entry: SelectedCardEntry) {
   if (!canCzarSelect.value) return
-  lobby.queueCzarSelectedEntry(entry as { playerId: string; card: any })
+  lobby.queueCzarSelectedEntry({ playerId: entry.playerId, cards: entry.cards ?? null })
+}
+
+// number of cards in a player's set (>=1)
+function entrySetSize(entry: SelectedCardEntry): number {
+  return entry.cards?.length || entry.resolved?.length || 1
+}
+// one entry per card in the set: resolved answer html during reveal, empty (face-down) otherwise
+function entryFaceList(entry: SelectedCardEntry): string[] {
+  const size = entrySetSize(entry)
+  const faces = isRevealPhase.value ? (entry.resolved ?? []).map((r) => r?.text ?? "") : []
+  return Array.from({ length: size }, (_, i) => faces[i] ?? "")
 }
 
 function requestLockBoost(playerId: string) {
@@ -368,21 +379,32 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="gridRef" class="contents">
+    <!-- one group per player; a set's cards sit side by side and flip individually -->
     <div
       v-for="entry in selectedEntries"
       :key="entry.playerId"
-      class="card-flip card-responsive"
-      :class="{
-        'card-selectable': canCzarSelect,
-        'card-selected': selectedCzarCardPlayerId === entry.playerId,
-      }"
-      :data-selected-player-id="entry.playerId"
-      @click="onCzarCardSelect(entry)"
-      @pointerdown="onPendingCardBoostPointerDown($event, entry.playerId)"
+      class="card-set"
+      :class="[`card-set--${entrySetSize(entry)}`, { 'set-boxed': !isRevealPhase }]"
+      :style="{ gridColumn: `span ${entrySetSize(entry)}` }"
+      :data-set-size="entrySetSize(entry)"
+      :data-set-player-id="entry.playerId"
     >
-      <div class="card-flip-inner">
-        <div class="madness-card card-white card-responsive card-back card-flip-back" aria-hidden="true"></div>
-        <div class="madness-card card-white card-responsive card-flip-front" v-html="isRevealPhase ? entry.resolved?.text : ''"></div>
+      <div
+        v-for="(face, ci) in entryFaceList(entry)"
+        :key="ci"
+        class="card-flip card-responsive"
+        :class="{
+          'card-selectable': canCzarSelect,
+          'card-selected': selectedCzarCardPlayerId === entry.playerId,
+        }"
+        :data-selected-player-id="entry.playerId"
+        @click="onCzarCardSelect(entry)"
+        @pointerdown="onPendingCardBoostPointerDown($event, entry.playerId)"
+      >
+        <div class="card-flip-inner">
+          <div class="madness-card card-white card-responsive card-back card-flip-back" aria-hidden="true"></div>
+          <div class="madness-card card-white card-responsive card-flip-front" v-html="face"></div>
+        </div>
       </div>
     </div>
   </div>

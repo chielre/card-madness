@@ -1,3 +1,8 @@
+export type PackTranslation = {
+    name?: string
+    description?: string
+}
+
 type PackMeta = {
     id?: string
     name?: string
@@ -6,6 +11,7 @@ type PackMeta = {
         link?: string | null
     }
     description?: string
+    translations?: Record<string, PackTranslation>
     nsfw?: boolean
     language?: {
         fallback?: string
@@ -24,6 +30,7 @@ export type Pack = {
         link?: string | null
     }
     description?: string
+    translations?: Record<string, PackTranslation>
     nsfw?: boolean
     language?: {
         fallback?: string
@@ -42,6 +49,8 @@ export type ResolvedPack = Pack & {
     deprecated: boolean
     deprecatedNote: string
 }
+
+import { getActiveLanguage } from "@/utils/activeLanguage"
 
 type GlobMap = Record<string, string>
 
@@ -110,24 +119,51 @@ function clampDeprecatedNote(raw: string, maxWords = 500) {
     return `${words.slice(0, maxWords).join(" ")}...`
 }
 
-function getResolved(): ResolvedPack[] {
-    if (!_cache) _cache = resolvePacks()
+function getResolvedBase(): ResolvedPack[] {
+    if (!_cache) _cache = buildBasePacks()
     return _cache
 }
 
+/**
+ * Overlays the name/description for the user's active language on top of a
+ * pack. The top-level `name`/`description` act as the fallback, so a pack
+ * without a matching translation keeps showing its default text. We try the
+ * active language first, then the pack's own fallback language, then the
+ * baked-in fallback. Reading the active language here (not at build time)
+ * keeps pack text reactive when the locale switches.
+ */
+function localizePack(pack: ResolvedPack): ResolvedPack {
+    const language = getActiveLanguage()
+    const fallbackLanguage = pack.language?.fallback?.trim()
+    const translations = pack.translations ?? {}
+
+    const pick = (field: keyof PackTranslation, fallback: string) =>
+        translations[language]?.[field]?.trim()
+        || (fallbackLanguage ? translations[fallbackLanguage]?.[field]?.trim() : "")
+        || fallback
+
+    return {
+        ...pack,
+        name: pick("name", pack.name),
+        description: pick("description", pack.description ?? ""),
+    }
+}
+
 export function getPackById(id: string): ResolvedPack | null {
-    return getResolved().find(p => p.id === id) ?? null
+    const pack = getResolvedBase().find(p => p.id === id)
+    return pack ? localizePack(pack) : null
 }
 
 export function getPackByName(name: string): ResolvedPack | null {
     const needle = name.trim().toLowerCase()
 
-    return getResolved().find(p =>
+    const pack = getResolvedBase().find(p =>
         p.name.trim().toLowerCase() === needle
-    ) ?? null
+    )
+    return pack ? localizePack(pack) : null
 }
 
-export function resolvePacks(): ResolvedPack[] {
+function buildBasePacks(): ResolvedPack[] {
     const bgMap = mapAssetsByPack(bgImages)
     const logoMap = mapAssetsByPack(logoImages)
     const partnerMap = mapAssetsByPack(partnerImages)
@@ -146,6 +182,7 @@ export function resolvePacks(): ResolvedPack[] {
             name,
             author: meta.author,
             description: meta.description ?? "",
+            translations: meta.translations,
             nsfw: meta.nsfw ?? false,
             language: meta.language,
             gradient_from: meta.gradient_from ?? DEFAULT_GRADIENT_FROM,
@@ -161,6 +198,10 @@ export function resolvePacks(): ResolvedPack[] {
                 : "",
         }
     })
+}
+
+export function resolvePacks(): ResolvedPack[] {
+    return getResolvedBase().map(localizePack)
 }
 
 export default resolvePacks

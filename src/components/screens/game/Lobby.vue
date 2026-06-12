@@ -166,6 +166,17 @@ const roundCountOptions: SelectOption[] = [1, 2, 3, 4, 5, 6, 7, 8].map((value) =
 
 const czarRatingTimeOptions: SelectOption[] = buildTimeOptions([10_000, 30_000, 60_000, 120_000])
 
+const selectionLockTimeOptions: SelectOption[] = buildTimeOptions([3_000, 5_000, 10_000, 15_000])
+
+const selectedSelectionLockTimeMs = computed<number>({
+    get: () => lobbySettings.value.selectionLockTimeMs,
+    set: (value) => {
+        const next = Number(value)
+        if (!Number.isFinite(next)) return
+        void applyLobbySettings({ selectionLockTimeMs: Math.round(next) })
+    },
+})
+
 const selectedCzarRatingTimeMs = computed<number>({
     get: () => lobbySettings.value.czarRatingTimeMs,
     set: (value) => {
@@ -339,7 +350,7 @@ defineExpose({ openReadyModal, closeReadyModal })
                                 </button>
                             </div>
                             <div v-if="player.id === lobby.host" class="text-sm font-black px-2 py-1 rounded-full bg-yellow-300 text-black border-4 border-b-8 border-black">
-                                Host
+                                {{ $t('host') }}
                             </div>
                             <div v-else-if="player.id === connection.getSocketSafe()?.id" class="text-sm font-black px-2 py-1 rounded-full bg-gray-200 text-black  border-4 border-b-8 border-black">
                                 {{ $t("you") }}
@@ -361,7 +372,7 @@ defineExpose({ openReadyModal, closeReadyModal })
                 <div class="flex gap-2 justify-between">
                     <div class="flex-1 flex gap-3 mb-4 bg-black/50 p-4 rounded-xl text-white">
                         <button class="font-bold cursor-pointer" @click="toggleAll">
-                            All
+                            {{ $t('all_packs') }}
                         </button>
 
                         <button class="font-bold cursor-pointer" :class="activeFilters.has('nsfw') ? ' underline text-outline-black' : ''" @click="toggleFilter('nsfw')">
@@ -394,24 +405,24 @@ defineExpose({ openReadyModal, closeReadyModal })
                         class="settings-scroll bg-white border-4 border-b-8 rounded-xl border-black p-6 text-black overflow-y-auto max-h-[calc(100vh-280px)]"
                     >
                         <Tabs>
-                            <Tab name="lobby" label="Lobby">
+                            <Tab name="lobby" :label="$t('settings_lobby_tab')">
                                 <div class="space-y-5">
                                     <div class="flex flex-col gap-2 items-start">
                                         <div>
-                                            <h2 class="font-bold text-lg">Lobby blijft open</h2>
-                                            <p class="mt-1 text-sm text-gray-600">Nieuwe spelers kunnen niet meer joinen zodra de game start.</p>
+                                            <h2 class="font-bold text-lg">{{ $t('settings_lobby_open') }}</h2>
+                                            <p class="mt-1 text-sm text-gray-600">{{ $t('settings_lobby_open_description') }}</p>
                                         </div>
                                         <ToggleSwitch class="mt-1" name="lobby-open-setting" v-model="keepLobbyOpenToggle" :disabled="!canEditSettings" />
                                     </div>
                                 </div>
                             </Tab>
 
-                            <Tab name="game" label="Game">
+                            <Tab name="game" :label="$t('settings_game_tab')">
                                 <div class="space-y-5">
                                     <div class="flex flex-col gap-2 items-start">
                                         <div>
-                                            <h2 class="font-bold text-lg">Ronde tijd</h2>
-                                            <p class="mt-1 text-sm text-gray-600">De duur van een speelronde.</p>
+                                            <h2 class="font-bold text-lg">{{ $t('settings_round_time') }}</h2>
+                                            <p class="mt-1 text-sm text-gray-600">{{ $t('settings_round_time_description') }}</p>
                                         </div>
                                         <BaseSelect
                                             v-model="selectedRoundTimeMs"
@@ -422,8 +433,8 @@ defineExpose({ openReadyModal, closeReadyModal })
                                     </div>
                                     <div class="flex flex-col gap-2 items-start">
                                         <div>
-                                            <h2 class="font-bold text-lg">Kiestijd</h2>
-                                            <p class="mt-1 text-sm text-gray-600">Hoelang de czar mag kiezen.</p>
+                                            <h2 class="font-bold text-lg">{{ $t('settings_czar_pick_time') }}</h2>
+                                            <p class="mt-1 text-sm text-gray-600">{{ $t('settings_czar_pick_time_description') }}</p>
                                         </div>
                                         <BaseSelect
                                             v-model="selectedCzarPickTimeMs"
@@ -434,8 +445,8 @@ defineExpose({ openReadyModal, closeReadyModal })
                                     </div>
                                     <div class="flex flex-col gap-2 items-start">
                                         <div>
-                                            <h2 class="font-bold text-lg">Aantal rondes</h2>
-                                            <p class="mt-1 text-sm text-gray-600">Hoeveel keer wordt iedereen een czar.</p>
+                                            <h2 class="font-bold text-lg">{{ $t('settings_round_count') }}</h2>
+                                            <p class="mt-1 text-sm text-gray-600">{{ $t('settings_round_count_description') }}</p>
                                         </div>
                                         <BaseSelect
                                             v-model="selectedRoundCount"
@@ -446,22 +457,34 @@ defineExpose({ openReadyModal, closeReadyModal })
                                     </div>
                                     <div class="flex flex-col gap-2 items-start">
                                         <div>
-                                            <h2 class="font-bold text-lg">Kaarten wisselen</h2>
-                                            <p class="mt-1 text-sm text-gray-600">Spelers kunnen een kaart inruilen voor een nieuwe. Dit kost 1 punt.</p>
+                                            <h2 class="font-bold text-lg">{{ $t('settings_selection_lock_time') }}</h2>
+                                            <p class="mt-1 text-sm text-gray-600">{{ $t('settings_selection_lock_time_description') }}</p>
+                                        </div>
+                                        <BaseSelect
+                                            v-model="selectedSelectionLockTimeMs"
+                                            :options="selectionLockTimeOptions"
+                                            :disabled="!canEditSettings"
+                                            name="selection-lock-time-setting"
+                                        />
+                                    </div>
+                                    <div class="flex flex-col gap-2 items-start">
+                                        <div>
+                                            <h2 class="font-bold text-lg">{{ $t('settings_card_swap') }}</h2>
+                                            <p class="mt-1 text-sm text-gray-600">{{ $t('settings_card_swap_description') }}</p>
                                         </div>
                                         <ToggleSwitch class="mt-1" name="card-swap-setting" v-model="cardSwapEnabledToggle" :disabled="!canEditSettings" />
                                     </div>
                                     <div class="flex flex-col gap-2 items-start">
                                         <div>
-                                            <h2 class="font-bold text-lg">Publieksbeoordeling</h2>
-                                            <p class="mt-1 text-sm text-gray-600">Laat het publiek de keuze van de czar beoordelen. Bij een meerderheid krijgt de czar extra punten.</p>
+                                            <h2 class="font-bold text-lg">{{ $t('settings_czar_rating') }}</h2>
+                                            <p class="mt-1 text-sm text-gray-600">{{ $t('settings_czar_rating_description') }}</p>
                                         </div>
                                         <ToggleSwitch class="mt-1" name="czar-rating-setting" v-model="czarRatingEnabledToggle" :disabled="!canEditSettings" />
                                     </div>
                                     <div v-if="lobbySettings.czarRatingEnabled" class="flex flex-col gap-2 items-start">
                                         <div>
-                                            <h2 class="font-bold text-lg">Beoordelingstijd</h2>
-                                            <p class="mt-1 text-sm text-gray-600">De tijd die het publiek krijgt om te beoordelen.</p>
+                                            <h2 class="font-bold text-lg">{{ $t('settings_czar_rating_time') }}</h2>
+                                            <p class="mt-1 text-sm text-gray-600">{{ $t('settings_czar_rating_time_description') }}</p>
                                         </div>
                                         <BaseSelect
                                             v-model="selectedCzarRatingTimeMs"
@@ -481,7 +504,7 @@ defineExpose({ openReadyModal, closeReadyModal })
                         class="pointer-events-none absolute inset-x-1 bottom-1 flex h-16 items-end justify-center rounded-b-xl bg-linear-to-t from-white via-white/90 to-transparent pb-2"
                     >
                         <span class="flex items-center gap-1 text-xs font-black text-gray-500 animate-bounce">
-                            <ChevronDown :size="16" /> meer instellingen
+                            <ChevronDown :size="16" /> {{ $t('settings_more') }}
                         </span>
                     </div>
                 </div>

@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import gsap from "gsap"
 import Close from "vue-material-design-icons/Close.vue"
+import Crown from "vue-material-design-icons/Crown.vue"
 
 import { useLobbyStore } from "@/store/LobbyStore"
 
@@ -194,7 +195,10 @@ onBeforeUnmount(() => {
       <ul class="space-y-2">
         <li v-for="player in displayPlayers" :key="player.id" class="group flex justify-between items-center gap-4 text-black text-xl font-bold p-2 rounded-xl even:bg-gray-100">
           <div class="relative flex items-center gap-4">
-            <div class="inline-block w-4 h-4 border-3 border-white outline-2 outline-black rounded-full" :class="getPlayerStatusClass(player)" :data-player-dot="player.id"></div>
+            <div v-if="lobby.isPlayerCzar(player.id)" class="inline-flex items-center justify-center w-4 h-4 text-yellow-500" :data-player-dot="player.id">
+              <Crown :size="18" />
+            </div>
+            <div v-else class="inline-block w-4 h-4 border-3 border-white outline-2 outline-black rounded-full" :class="getPlayerStatusClass(player)" :data-player-dot="player.id"></div>
             <div>{{ player.name }}</div>
             <div
               :data-swap-card="player.id"

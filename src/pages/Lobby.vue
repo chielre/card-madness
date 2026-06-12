@@ -347,10 +347,10 @@ watch(
     () => lobby.pendingSelectedCardTick,
     (tick) => {
         if (!tick || !socket) return
-        const card = lobby.pendingSelectedCard
-        if (!card) return
-        socket.emit('player:card-selected', { lobbyId, card })
-        lobby.clearPendingSelectedCard()
+        const cards = lobby.pendingSelectedCards
+        if (!cards || !cards.length) return
+        socket.emit('player:card-selected', { lobbyId, cards })
+        lobby.clearPendingSelectedCards()
     }
 )
 
@@ -360,7 +360,11 @@ watch(
         if (!tick || !socket) return
         const card = lobby.pendingUnselectedCard
         if (!card) return
-        socket.emit('player:card-unselected', { lobbyId, card })
+        socket.emit('player:card-unselected', { lobbyId, card }, (res: { error?: string } | undefined) => {
+            // The server is authoritative: if it refuses the take-back (already
+            // locked / round advanced) restore the card we removed optimistically.
+            if (res?.error) lobby.recordUnselectRejected()
+        })
         lobby.clearPendingUnselectedCard()
     }
 )

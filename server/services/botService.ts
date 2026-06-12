@@ -1,11 +1,12 @@
 import { nanoid } from 'nanoid'
-import { givePlayerHand, joinGame, selectPlayerCard, lockPlayerSelection, areAllNonSelectorPlayersSelected, selectCzarCard, finalizeRound, recordCzarRatingVote } from './gameService.js'
+import { givePlayerHand, joinGame, selectPlayerCard, lockPlayerSelection, areAllNonSelectorPlayersSelected, selectCzarCard, finalizeRound, recordCzarRatingVote, getRoundAnswerCount, setReady } from './gameService.js'
 import { scheduleSelectionLockTimer, hasActiveSelectionLocks } from '../utils/selectionLockTimers.js'
 
 import { roundTimer, phaseTimer } from '../utils/timers.js'
 
 import { transitionPhase } from './phaseService.js'
 import { startCzarPhase, startNextTurn } from './phaseFlowService.js'
+import { emitPlayersUpdated } from '../io/emitters.js'
 import { startCzarRatingFlow, resolveCzarRatingAndBroadcast } from './czarRatingService.js'
 
 
@@ -36,11 +37,20 @@ const tryStartCzarIfReady = ({ io, games, lobbyId }) => {
 }
 
 const selectBotCardForRound = ({ io, games, lobbyId, bot }) => {
-    const cards = bot.white_cards ?? []
-    if (!cards.length) return
+    const hand = bot.white_cards ?? []
+    if (!hand.length) return
 
-    const picked = cards[Math.floor(Math.random() * cards.length)]
-    const res = selectPlayerCard({ games, lobbyId, playerId: bot.id, card: picked })
+    // play a complete set: as many distinct random cards as the black card has answers
+    const game = games.get(lobbyId)
+    const answerCount = getRoundAnswerCount(game)
+    const pool = [...hand]
+    const picked = []
+    while (picked.length < answerCount && pool.length) {
+        picked.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0])
+    }
+    if (picked.length < answerCount) return
+
+    const res = selectPlayerCard({ games, lobbyId, playerId: bot.id, cards: picked })
     if (res?.error) return
 
     const lockInfo = scheduleSelectionLockTimer({
@@ -143,12 +153,36 @@ const castBotRatingVotes = ({ io, games, lobbyId, round, bots }) => {
     }
 }
 
+// Bots are always ready to play. A fresh lobby spawns them ready, but returning
+// to the lobby after a game (resetGameForLobby) clears every player's ready flag,
+// so the bots must re-ready themselves here. Without this they'd sit un-ready and
+// block the host from ever starting the next game.
+const readyBotsInLobby = ({ io, games, lobbyId, bots }) => {
+    let changed = false
+    bots.forEach((bot) => {
+        if (bot.ready) return
+        const res = setReady({ games, lobbyId, socketId: bot.id, ready: true })
+        if (!res?.error) changed = true
+    })
+
+    if (changed) {
+        const updated = games.get(lobbyId)
+        if (updated) emitPlayersUpdated({ io, lobbyId, game: updated })
+    }
+}
+
 const tickBotLobby = ({ io, games, lobbyId }) => {
     const game = games.get(lobbyId)
     if (!game) return false
 
     const bots = (game.players ?? []).filter(isBotPlayer)
     if (!bots.length) return false
+
+    // Keep bots ready while waiting in the lobby or during the ready countdown.
+    if (game.phase === 'lobby' || game.phase === 'starting') {
+        readyBotsInLobby({ io, games, lobbyId, bots })
+        return true
+    }
 
     if (game.phase === 'czar') {
         const round = game.rounds?.[game.currentRound]

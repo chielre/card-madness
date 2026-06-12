@@ -14,6 +14,8 @@ const availableLocales = Object.keys(messages)
 const initialLocale = resolveInitialLocale(availableLocales, "en")
 
 export const i18n = createI18n({
+    legacy: false,
+    globalInjection: true,
     locale: initialLocale,
     fallbackLocale: "en",
     messages,

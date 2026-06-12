@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { useConnectionStore } from './ConnectionStore'
-import { resolveBlackCard, resolveWhiteCards } from "@/utils/cards"
+import { resolveBlackCard, resolveWhiteCards, getBlackCardAnswerCount } from "@/utils/cards"
 import router from '@/router'
 import { useUiStore } from './UiStore'
 import { DEFAULT_LOBBY_SETTINGS, normalizeLobbySettings } from '@/types/lobbySettings'
@@ -32,7 +32,7 @@ type RoundState = {
         selectedCard: any
     }
     blackCard: any
-    playerSelectedCards: { playerId: string; card?: WhiteCard | null; locked?: boolean }[]
+    playerSelectedCards: { playerId: string; cards?: WhiteCard[] | null; locked?: boolean }[]
 }
 
 // Mirror of POINTS_CARD_SWAP_COST on the server: a card swap costs this many points.
@@ -68,9 +68,9 @@ const emptyCzarRating = (): CzarRatingState => ({
 
 export type SelectedCardEntry = {
     playerId: string
-    card?: WhiteCard | null
+    cards?: WhiteCard[] | null
     locked?: boolean
-    resolved?: { text?: string } | null
+    resolved?: { text?: string }[] | null
 }
 
 type Game = {
@@ -131,19 +131,20 @@ export const useLobbyStore = defineStore('lobby', {
         roundTimerDurationMs: 0,
         roundTimerExpiresAt: 0,
         roundTimeoutTick: 0,
-        pendingSelectedCard: null as WhiteCard | null,
+        pendingSelectedCards: null as WhiteCard[] | null,
         pendingSelectedCardTick: 0,
         pendingUnselectedCard: null as WhiteCard | null,
         pendingUnselectedCardTick: 0,
+        unselectRejectedTick: 0,
         pendingSwapCard: null as WhiteCard | null,
         pendingSwapCardTick: 0,
         lastSwappedPlayerId: null as string | null,
         cardSwappedTick: 0,
-        pendingCzarSelectedEntry: null as { playerId: string; card: WhiteCard } | null,
+        pendingCzarSelectedEntry: null as { playerId: string; cards?: WhiteCard[] | null } | null,
         pendingCzarSelectedTick: 0,
         lastSelectedCard: null as { playerId: string; card?: WhiteCard | null; action: 'selected' | 'unselected'; sync?: boolean } | null,
         selectedCardAnimTick: 0,
-        selectionLockDurationMs: 10000,
+        selectionLockDurationMs: DEFAULT_LOBBY_SETTINGS.selectionLockTimeMs,
         selectionLockExpiresAt: 0,
         lastSelectionLockBoost: null as { playerId: string; selectionLockDurationMs?: number; selectionLockExpiresAt?: number } | null,
         selectionLockBoostTick: 0,
@@ -291,17 +292,18 @@ export const useLobbyStore = defineStore('lobby', {
             this.roundTimerDurationMs = 0
             this.roundTimerExpiresAt = 0
             this.roundTimeoutTick = 0
-            this.pendingSelectedCard = null
+            this.pendingSelectedCards = null
             this.pendingSelectedCardTick = 0
             this.pendingUnselectedCard = null
             this.pendingUnselectedCardTick = 0
+            this.unselectRejectedTick = 0
             this.pendingSwapCard = null
             this.pendingSwapCardTick = 0
             this.pendingCzarSelectedEntry = null
             this.pendingCzarSelectedTick = 0
             this.lastSelectedCard = null
             this.selectedCardAnimTick = 0
-            this.selectionLockDurationMs = 10000
+            this.selectionLockDurationMs = this.settings?.selectionLockTimeMs ?? DEFAULT_LOBBY_SETTINGS.selectionLockTimeMs
             this.selectionLockExpiresAt = 0
             this.lastSelectionLockBoost = null
             this.selectionLockBoostTick = 0
@@ -476,15 +478,25 @@ export const useLobbyStore = defineStore('lobby', {
 
 
 
+        getCurrentBlackCardAnswerCount(): number {
+            const blackCard = this.currentRound?.blackCard
+            if (!blackCard) return 1
+            try {
+                return Math.max(1, getBlackCardAnswerCount(blackCard))
+            } catch {
+                return 1
+            }
+        },
+
         getCurrentBlackCardHtml(): string | null {
             const blackCard = this.currentRound?.blackCard
             if (!blackCard) return null
             const selectedEntry = this.currentRound?.cardSelector?.selectedCard
             try {
-                let answerHtml: string | undefined
-                if (selectedEntry?.card) {
-                    const resolved = resolveWhiteCards([selectedEntry.card])
-                    answerHtml = resolved[0]?.text
+                let answerHtml: string[] | undefined
+                const selectedCards = (selectedEntry?.cards ?? []) as WhiteCard[]
+                if (selectedCards.length) {
+                    answerHtml = resolveWhiteCards(selectedCards).map((c) => c.text)
                 }
                 return resolveBlackCard(blackCard, answerHtml).text
             } catch {
@@ -502,12 +514,14 @@ export const useLobbyStore = defineStore('lobby', {
             if (!entries.length) return []
             if (this.phase !== 'czar') return entries.map((entry) => ({ ...entry, resolved: null }))
 
-            if (entries.some((entry) => !entry.card)) {
+            if (entries.some((entry) => !entry.cards || !entry.cards.length)) {
                 return entries.map((entry) => ({ ...entry, resolved: null }))
             }
 
-            const resolved = resolveWhiteCards(entries.map((entry) => entry.card as WhiteCard))
-            return entries.map((entry, idx) => ({ ...entry, resolved: resolved[idx] }))
+            return entries.map((entry) => ({
+                ...entry,
+                resolved: resolveWhiteCards((entry.cards ?? []) as WhiteCard[]),
+            }))
         },
 
         getSelectedEntryForPlayerId(playerId: string | null): SelectedCardEntry | null {
@@ -567,8 +581,8 @@ export const useLobbyStore = defineStore('lobby', {
             player.white_cards = cards ?? []
         },
 
-        queueSelectedCard(card: WhiteCard) {
-            this.pendingSelectedCard = card
+        queueSelectedCards(cards: WhiteCard[]) {
+            this.pendingSelectedCards = cards
             this.pendingSelectedCardTick += 1
         },
 
@@ -577,12 +591,19 @@ export const useLobbyStore = defineStore('lobby', {
             this.pendingUnselectedCardTick += 1
         },
 
-        clearPendingSelectedCard() {
-            this.pendingSelectedCard = null
+        clearPendingSelectedCards() {
+            this.pendingSelectedCards = null
         },
 
         clearPendingUnselectedCard() {
             this.pendingUnselectedCard = null
+        },
+
+        // The server refused a take-back (the set is already locked, or the round
+        // has advanced). The card was removed locally optimistically, so signal the
+        // board to restore it from the still-authoritative currentRound state.
+        recordUnselectRejected() {
+            this.unselectRejectedTick += 1
         },
 
         queueSwapCard(card: WhiteCard) {
@@ -600,7 +621,7 @@ export const useLobbyStore = defineStore('lobby', {
             this.cardSwappedTick += 1
         },
 
-        queueCzarSelectedEntry(entry: { playerId: string; card: WhiteCard }) {
+        queueCzarSelectedEntry(entry: { playerId: string; cards?: WhiteCard[] | null }) {
             this.pendingCzarSelectedEntry = entry
             this.pendingCzarSelectedTick += 1
         },
@@ -609,13 +630,13 @@ export const useLobbyStore = defineStore('lobby', {
             this.pendingCzarSelectedEntry = null
         },
 
-        recordPlayerSelectedCard(payload: { playerId: string; card?: WhiteCard | null; selectionLockDurationMs?: number; selectionLockExpiresAt?: number; sync?: boolean }) {
+        recordPlayerSelectedCard(payload: { playerId: string; cards?: WhiteCard[] | null; selectionLockDurationMs?: number; selectionLockExpiresAt?: number; sync?: boolean }) {
             if (this.currentRound) {
                 const list = this.currentRound.playerSelectedCards ?? []
                 const idx = list.findIndex((c) => c.playerId === payload.playerId)
-                const prevCard = idx >= 0 ? list[idx]?.card : null
+                const prevCards = idx >= 0 ? list[idx]?.cards : null
                 const prevLocked = idx >= 0 ? list[idx]?.locked : false
-                const nextEntry = { playerId: payload.playerId, card: payload.card ?? prevCard ?? null, locked: prevLocked }
+                const nextEntry = { playerId: payload.playerId, cards: payload.cards ?? prevCards ?? null, locked: prevLocked }
                 if (idx >= 0) {
                     list[idx] = nextEntry
                 } else {
@@ -623,7 +644,7 @@ export const useLobbyStore = defineStore('lobby', {
                 }
                 this.currentRound.playerSelectedCards = list
             }
-            this.lastSelectedCard = { playerId: payload.playerId, card: payload.card ?? null, action: 'selected', sync: payload.sync }
+            this.lastSelectedCard = { playerId: payload.playerId, card: payload.cards?.[0] ?? null, action: 'selected', sync: payload.sync }
             this.selectedCardAnimTick += 1
             if (typeof payload.selectionLockDurationMs === 'number') {
                 this.selectionLockDurationMs = payload.selectionLockDurationMs

@@ -41,15 +41,17 @@ const blackCardEmptyHtml = computed(() => {
 const selectedEntry = computed(() => lobby.currentRound?.cardSelector?.selectedCard ?? null)
 const selectedCzarPlayerId = computed(() => selectedEntry.value?.playerId ?? null)
 const selectedCzarPlayer = computed(() => lobby.players.find((p) => p.id === selectedCzarPlayerId.value) ?? null)
-const selectedCardHtml = computed(() => {
-  const card = selectedEntry.value?.card
-  if (!card) return ""
+// the resolved text of every white card in the winning set (one per :answer slot)
+const selectedCardsResolved = computed<string[]>(() => {
+  const cards = selectedEntry.value?.cards ?? []
+  if (!cards.length) return []
   try {
-    return resolveWhiteCards([card])[0]?.text ?? ""
+    return resolveWhiteCards(cards).map((c) => c.text)
   } catch {
-    return ""
+    return []
   }
 })
+const hasSelectedCards = computed(() => selectedCardsResolved.value.length > 0)
 
 const canStartNextRound = computed(() =>
   lobby.phase === "czar-result" && lobby.getCurrentPlayerIsCzar()
@@ -58,6 +60,7 @@ const canStartNextRound = computed(() =>
 let blackCardContainerEl: HTMLElement | null = null
 let blackCardFrontEl: HTMLElement | null = null
 let whiteCardEl: HTMLElement | null = null
+let whiteCardSetSize = 1
 let whiteCardBackEl: HTMLElement | null = null
 let czarResultOutroTl: gsap.core.Timeline | null = null
 let blackCardTypingFrame: number | null = null
@@ -429,12 +432,19 @@ function createBlackCard() {
 }
 
 function createWhiteCard() {
+  const faces = selectedCardsResolved.value
+  const n = Math.max(1, faces.length)
+  whiteCardSetSize = n
+  // the set's white cards sit exactly on top of each other (no offset / no "deck"),
+  // and slide into the black card as one clean stack just like a single card does
+  const cardHtml = (face: string) => `
+    <div class="card-flip czar-whitecard-card">
+      <div class="madness-card card-white card-responsive card-back card-flip-back" aria-hidden="true"></div>
+      <div class="madness-card card-white card-responsive card-flip-front">${face}</div>
+    </div>`
   const el = document.createElement("div")
-  el.className = "card-flip czar-whitecard-clone"
-  el.innerHTML = `
-    <div class="madness-card card-white card-back card-flip-back" aria-hidden="true"></div>
-    <div class="madness-card card-white card-flip-front">${selectedCardHtml.value}</div>
-  `
+  el.className = "czar-whitecard-clone"
+  el.innerHTML = (faces.length ? faces : [""]).map(cardHtml).join("")
   Object.assign(el.style, {
     position: "fixed",
     left: "0px",
@@ -445,23 +455,26 @@ function createWhiteCard() {
     zIndex: "70",
     transformOrigin: "center",
     pointerEvents: "none",
+    transformStyle: "preserve-3d",
   })
   document.body.appendChild(el)
-  el.querySelectorAll(".madness-card").forEach((card) => {
-    const cardEl = card as HTMLElement
-    cardEl.style.width = "100%"
-    cardEl.style.height = "100%"
+  el.querySelectorAll<HTMLElement>(".czar-whitecard-card").forEach((cf) => {
+    // every card in the set overlaps exactly
+    cf.style.position = "absolute"
+    cf.style.inset = "0"
+    cf.style.transformStyle = "preserve-3d"
+    const back = cf.querySelector(".card-flip-back") as HTMLElement | null
+    const front = cf.querySelector(".card-flip-front") as HTMLElement | null
+    for (const face of [back, front]) {
+      if (!face) continue
+      face.style.position = "absolute"
+      face.style.inset = "0"
+      face.style.transformStyle = "preserve-3d"
+      face.style.backfaceVisibility = "hidden"
+    }
+    if (back) back.style.transform = "rotateY(180deg)"
+    if (front) front.style.transform = "rotateY(0deg)"
   })
-  const back = el.querySelector(".card-flip-back") as HTMLElement | null
-  const front = el.querySelector(".card-flip-front") as HTMLElement | null
-  if (back && front) {
-    back.style.transformStyle = "preserve-3d"
-    front.style.transformStyle = "preserve-3d"
-    back.style.backfaceVisibility = "hidden"
-    front.style.backfaceVisibility = "hidden"
-    back.style.transform = "rotateY(180deg)"
-    front.style.transform = "rotateY(0deg)"
-  }
   whiteCardEl = el
   return el
 }
@@ -512,11 +525,12 @@ function setCardRect(el: HTMLElement | null, rect: DOMRect) {
   el.style.height = `${rect.height}px`
 }
 
-function getAnswerTextFromHtml(html: string) {
+function getAnswerTextsFromHtml(html: string): string[] {
   const tmp = document.createElement("div")
   tmp.innerHTML = html
-  const answerEl = tmp.querySelector(".card-answer") as HTMLElement | null
-  return (answerEl?.innerText || answerEl?.textContent || "").trim()
+  return Array.from(tmp.querySelectorAll(".card-answer")).map(
+    (el) => ((el as HTMLElement).innerText || el.textContent || "").trim()
+  )
 }
 
 function clearBlackCardTyping() {
@@ -526,28 +540,28 @@ function clearBlackCardTyping() {
   }
 }
 
+// Types every :answer span on the black card in parallel from placeholder to its answer.
 function typeBlackCardAnswer(answerHtml: string, durationMs: number) {
   clearBlackCardTyping()
   const wrap = setBlackCardHtml(blackCardEmptyHtml.value)
   if (!wrap) return
-  const placeholderText = getAnswerTextFromHtml(blackCardEmptyHtml.value)
-  const answerEl = wrap.querySelector(".card-answer") as HTMLElement | null
-  const text = getAnswerTextFromHtml(answerHtml)
-  if (!answerEl) return
-  if (!text) return
+  const placeholders = getAnswerTextsFromHtml(blackCardEmptyHtml.value)
+  const answerEls = Array.from(wrap.querySelectorAll<HTMLElement>(".card-answer"))
+  const texts = getAnswerTextsFromHtml(answerHtml)
+  if (!answerEls.length) return
 
-  const total = text.length
-  answerEl.textContent = placeholderText
+  const slots = answerEls.map((el, i) => {
+    const text = texts[i] || ""
+    el.textContent = placeholders[i] ?? ""
+    return { el, text }
+  })
+
   const start = performance.now()
-  let lastCount = 0
-
   const step = (now: number) => {
     const t = Math.min(1, (now - start) / durationMs)
-    const count = Math.floor(total * t)
-    if (count !== lastCount) {
-      answerEl.textContent = text.slice(0, count)
-      lastCount = count
-    }
+    slots.forEach(({ el, text }) => {
+      el.textContent = text.slice(0, Math.floor(text.length * t))
+    })
     if (t < 1) {
       blackCardTypingFrame = requestAnimationFrame(step)
     } else {
@@ -635,7 +649,7 @@ async function startCzarResultAnimation() {
     czarResultStarting = false
     return
   }
-  const hasWhiteCard = Boolean(selectedCardHtml.value)
+  const hasWhiteCard = hasSelectedCards.value
   const whiteCard = hasWhiteCard ? createWhiteCard() : null
   const whiteBackCard = createWhiteCardBack()
 

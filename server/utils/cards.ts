@@ -2,6 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { getPackById, packExists } from "./packs.js"
+import { DEFAULT_LANGUAGE, MAX_ANSWER_SLOTS } from "../config/cards.js"
 import type { BlackCard, WhiteCard } from "../types/Cards.js"
 import type { PackCards } from "../types/Pack.js"
 import type { Room } from "../types/Room.js"
@@ -16,7 +17,9 @@ const PACKS_DIR = (() => {
     if (!envPath) return DEFAULT_PACKS_DIR
     return path.isAbsolute(envPath) ? envPath : path.resolve(PROJECT_ROOT, envPath)
 })()
-const DEFAULT_LANGUAGE = "nl"
+
+/** Number of :answer slots in a black card's text (= the size of the set it expects). */
+export const countAnswerSlots = (text?: string): number => (text?.match(/:answer/g) ?? []).length
 
 const cardsCacheByLanguage: Record<string, Record<string, PackCards>> = {}
 
@@ -111,9 +114,14 @@ export const pickUniqueRandomBlackCard = (game: Room, language = DEFAULT_LANGUAG
     const eligiblePackIds = packIds.filter((packId) => cardsByPack[packId]?.black?.length)
     if (!eligiblePackIds.length) return null
 
+    // A black card is drawable only when it is unused AND has 1..MAX_ANSWER_SLOTS answers.
+    const isDrawable = (packId: string, card_id: number) =>
+        !used.has(keyOf({ pack: packId, card_id })) &&
+        countAnswerSlots(cardsByPack[packId]?.black?.[card_id]) <= MAX_ANSWER_SLOTS
+
     const eligiblePacks = eligiblePackIds.filter((packId) => {
         const pack = cardsByPack[packId]
-        return pack.black.some((_, card_id) => !used.has(keyOf({ pack: packId, card_id })))
+        return pack.black.some((_, card_id) => isDrawable(packId, card_id))
     })
     if (!eligiblePacks.length) return null
 
@@ -121,7 +129,7 @@ export const pickUniqueRandomBlackCard = (game: Room, language = DEFAULT_LANGUAG
     const pack = cardsByPack[pickedPackId]
     const availableIds = pack.black
         .map((_, card_id) => card_id)
-        .filter((card_id) => !used.has(keyOf({ pack: pickedPackId, card_id })))
+        .filter((card_id) => isDrawable(pickedPackId, card_id))
     if (!availableIds.length) return null
 
     const pickedId = availableIds[rand(availableIds.length)]

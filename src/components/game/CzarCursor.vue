@@ -28,6 +28,7 @@ const isCurrentPlayerCardSelector = computed(() => lobby.getCurrentPlayerIsCzar(
 let czarCursorRaf = 0
 let czarCursorPending: { x: number; y: number } | null = null
 let czarHoverCard: HTMLElement | null = null
+let czarHoverCards: HTMLElement[] = []
 let czarCursorSentVisible = false
 let czarCursorHideTimeout: ReturnType<typeof setTimeout> | null = null
 let czarCursorHotspot = { x: 0, y: 0 }
@@ -115,8 +116,9 @@ function setHoverPlayer(next: string | null) {
 }
 
 function clearCzarHover() {
-  if (!czarHoverCard) return
-  czarHoverCard.classList.remove("czar-card-hover")
+  if (!czarHoverCard && !czarHoverCards.length) return
+  czarHoverCards.forEach((el) => el.classList.remove("czar-card-hover"))
+  czarHoverCards = []
   czarHoverCard = null
   setHoverPlayer(null)
 }
@@ -151,11 +153,16 @@ function updateCzarHoverAt(x: number, y: number) {
   const nextCard = getCzarHoverCardAt(x, y)
   if (nextCard === czarHoverCard) return
   clearCzarHover()
+  const playerId = nextCard?.getAttribute("data-selected-player-id") ?? null
   if (nextCard) {
     czarHoverCard = nextCard
-    czarHoverCard.classList.add("czar-card-hover")
+    // light up the whole set (every card sharing this player's id), not just one card
+    const setCards = playerId && props.boardGridRef
+      ? Array.from(props.boardGridRef.querySelectorAll<HTMLElement>(`.card-flip[data-selected-player-id="${playerId}"]`))
+      : [nextCard]
+    czarHoverCards = setCards.length ? setCards : [nextCard]
+    czarHoverCards.forEach((el) => el.classList.add("czar-card-hover"))
   }
-  const playerId = nextCard?.getAttribute("data-selected-player-id") ?? null
   setHoverPlayer(playerId)
 }
 

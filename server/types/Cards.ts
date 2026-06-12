@@ -16,7 +16,8 @@ export interface BlackCard extends BaseCard {
 
 export interface PlayerSelectedCardEntry {
     playerId: string
-    card: WhiteCard
+    /** Ordered set of white cards, one per :answer slot in the round's black card. */
+    cards: WhiteCard[]
     locked?: boolean
 }
 

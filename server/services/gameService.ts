@@ -6,7 +6,8 @@ import {
     buildUsedWhiteSet,
     whiteCardExists,
     blackCardExists,
-    pickFairWhiteCard
+    pickFairWhiteCard,
+    countAnswerSlots
 } from '../utils/cards.js'
 import { POINTS_CZAR_PICKED, POINTS_CZAR_SELECT, POINTS_CARD_SWAP_COST, POINTS_CZAR_RATING_BONUS } from '../config/points.js'
 import { normalizeLobbySettings } from '../config/lobbySettings.js'
@@ -55,6 +56,16 @@ const buildCardNames = (game, text) => {
     if (!slotCount) return []
     const namePool = buildCardNamePool(game)
     return pickRandomLobbyNames(namePool, slotCount)
+}
+
+// Number of white cards a player must play this round = the number of :answer
+// slots in the current round's black card (clamped to at least 1).
+export const getRoundAnswerCount = (game) => {
+    const round = game?.rounds?.[game?.currentRound]
+    const black = round?.blackCard
+    if (!black) return 1
+    const text = getBlackCardText(black.pack, black.card_id, getGameLanguage(game))
+    return Math.max(1, countAnswerSlots(text))
 }
 
 export const ensureLobbySettings = (game) => {
@@ -282,6 +293,21 @@ export const setReady = ({ games, lobbyId, socketId, ready }) => {
     return { game, player }
 }
 
+// Aborts a pending "everybody ready?" countdown: drops back to the lobby and
+// clears every player's ready flag so the host can start again and players can
+// re-ready. Packs/settings are intentionally preserved (no full game reset).
+export const cancelStartingPhase = ({ games, lobbyId }) => {
+    const game = games.get(lobbyId)
+    if (!game) return { error: 'not_found' }
+    if (game.phase !== 'starting') return { error: 'invalid_phase' }
+
+    game.phase = 'lobby'
+    game.players = (game.players ?? []).map((player) => ({ ...player, ready: false }))
+    games.set(lobbyId, game)
+
+    return { game }
+}
+
 export const setPlayerLanguage = ({ games, lobbyId, socketId, language }) => {
     const game = games.get(lobbyId)
     if (!game) return { error: 'not_found' }
@@ -471,7 +497,9 @@ export const prepareRound = ({ games, lobbyId, round, czarId = null }) => {
     return { game, round: targetRound }
 }
 
-export const selectPlayerCard = ({ games, lobbyId, playerId, card }) => {
+// Selects a complete set of white cards (one per :answer slot) for a player.
+// `cards` accepts a single card (legacy single-answer) or an ordered array.
+export const selectPlayerCard = ({ games, lobbyId, playerId, cards = null, card = null }) => {
     const game = games.get(lobbyId)
     if (!game) return { error: "not_found" }
 
@@ -491,17 +519,30 @@ export const selectPlayerCard = ({ games, lobbyId, playerId, card }) => {
     // should not be the czar
     if (round.cardSelector?.player === playerId) return { error: "card_selector_cannot_select" }
 
-    const selected = player.white_cards?.find((c) => c.pack === card?.pack && c.card_id === card?.card_id) ?? card
-    if (!selected) return { error: "card_not_found" }
+    // normalize input to an ordered set and map each onto the player's hand
+    const inputCards = Array.isArray(cards) ? cards : (cards ? [cards] : (card ? [card] : []))
+    const expectedCount = getRoundAnswerCount(game)
+    if (inputCards.length !== expectedCount) return { error: "incomplete_set" }
+
+    const selectedCards = []
+    const seen = new Set<string>()
+    for (const c of inputCards) {
+        const match = player.white_cards?.find((hc) => hc.pack === c?.pack && hc.card_id === c?.card_id)
+        if (!match) return { error: "card_not_found" }
+        const key = keyOf(match)
+        if (seen.has(key)) return { error: "duplicate_card" }
+        seen.add(key)
+        selectedCards.push(match)
+    }
 
     round.playerSelectedCards = round.playerSelectedCards ?? []
 
-    // check if the player already has a locked in card
+    // check if the player already has a locked in set
     const selectedCardIndex = round.playerSelectedCards.findIndex((c) => c.playerId === playerId)
     const existingEntry = selectedCardIndex >= 0 ? round.playerSelectedCards[selectedCardIndex] : null
     if (existingEntry?.locked) return { error: "selection_locked" }
 
-    const entry = { playerId, card: selected, locked: false }
+    const entry = { playerId, cards: selectedCards, locked: false }
     if (selectedCardIndex >= 0) {
         round.playerSelectedCards[selectedCardIndex] = entry
     } else {
@@ -514,7 +555,8 @@ export const selectPlayerCard = ({ games, lobbyId, playerId, card }) => {
     return { game, round, playerSelectedCard: entry }
 }
 
-export const unselectPlayerCard = ({ games, lobbyId, playerId, card }) => {
+// Removes a player's whole selected set for the round.
+export const unselectPlayerCard = ({ games, lobbyId, playerId }) => {
     const game = games.get(lobbyId)
     if (!game) return { error: "not_found" }
 
@@ -535,7 +577,7 @@ export const unselectPlayerCard = ({ games, lobbyId, playerId, card }) => {
     if (round.cardSelector?.player === playerId) return { error: "card_selector_cannot_select" }
 
 
-    // check if the player already has a locked in card
+    // check if the player already has a locked in set
     const existingEntry = (round.playerSelectedCards ?? []).find((c) => c.playerId === playerId)
     if (existingEntry?.locked) return { error: "selection_locked" }
 
@@ -543,7 +585,7 @@ export const unselectPlayerCard = ({ games, lobbyId, playerId, card }) => {
     game.rounds[roundNumber] = round
     games.set(lobbyId, game)
 
-    return { game, round, playerSelectedCard: { playerId, card } }
+    return { game, round, playerSelectedCard: { playerId } }
 }
 
 /**
@@ -582,9 +624,9 @@ export const swapPlayerCard = async ({ games, lobbyId, playerId, card, handSize 
     const idx = player.white_cards.findIndex((c) => c.pack === card?.pack && c.card_id === card?.card_id)
     if (idx < 0) return { error: "card_not_found" }
 
-    // the card that is currently played/selected this round cannot be swapped
+    // a card that is part of the player's currently played set cannot be swapped
     const selectedEntry = (round.playerSelectedCards ?? []).find((c) => c.playerId === playerId)
-    if (selectedEntry?.card && selectedEntry.card.pack === card.pack && selectedEntry.card.card_id === card.card_id) {
+    if ((selectedEntry?.cards ?? []).some((c) => c.pack === card.pack && c.card_id === card.card_id)) {
         return { error: "card_in_play" }
     }
 
@@ -669,14 +711,21 @@ export const autoSelectMissingPlayerCards = ({ games, lobbyId }) => {
     if (!missingPlayers.length) return { game, round, added: [] }
 
     const rand = (max) => Math.floor(Math.random() * max)
+    const answerCount = getRoundAnswerCount(game)
     round.playerSelectedCards = round.playerSelectedCards ?? []
     const added = []
 
     for (const player of missingPlayers) {
-        const cards = player.white_cards ?? []
-        if (!cards.length) continue
-        const picked = cards[rand(cards.length)]
-        const entry = { playerId: player.id, card: picked }
+        const hand = player.white_cards ?? []
+        if (!hand.length) continue
+        // pick `answerCount` distinct random cards from the player's hand
+        const pool = [...hand]
+        const picked = []
+        while (picked.length < answerCount && pool.length) {
+            picked.push(pool.splice(rand(pool.length), 1)[0])
+        }
+        if (!picked.length) continue
+        const entry = { playerId: player.id, cards: picked }
         round.playerSelectedCards.push(entry)
         added.push(entry)
     }
@@ -726,19 +775,19 @@ export const finalizeRound = async ({ games, lobbyId, handSize = 5, uniquePerGam
     for (const entry of selectedEntries) {
         const player = game.players?.find((p) => p.id === entry.playerId)
         if (!player) continue
-        const card = entry.card
-        if (!card) continue
+        const playedCards = entry.cards ?? []
+        if (!playedCards.length) continue
 
-        player.white_cards = (player.white_cards ?? []).filter(
-            (c) => !(c.pack === card.pack && c.card_id === card.card_id)
-        )
+        const playedKeys = new Set(playedCards.map(keyOf))
+        player.white_cards = (player.white_cards ?? []).filter((c) => !playedKeys.has(keyOf(c)))
         updatedPlayerIds.add(player.id)
     }
 
     games.set(lobbyId, game)
 
+    // refill each affected hand back up to handSize (handles sets of >1 card)
     for (const playerId of updatedPlayerIds) {
-        await givePlayerOneWhiteCard({ games, lobbyId, playerId, uniquePerGame, maxHandSize: handSize })
+        await givePlayerHand({ games, lobbyId, playerId, handSize, uniquePerGame })
     }
 
     const updatedGame = games.get(lobbyId)
@@ -796,12 +845,9 @@ export const selectCzarCard = ({ games, lobbyId, playerId, entry }) => {
 
     if (round.cardSelector?.player !== playerId) return { error: "not_card_selector" }
 
+    // the czar picks a whole player set; identify it by the player it belongs to
     const pool = round.playerSelectedCards ?? []
-    const match = pool.find(
-        (p) => p.playerId === entry?.playerId
-            && p.card?.pack === entry?.card?.pack
-            && p.card?.card_id === entry?.card?.card_id
-    )
+    const match = pool.find((p) => p.playerId === entry?.playerId)
     if (!match) return { error: "card_not_found" }
 
     round.cardSelector = round.cardSelector ?? { player: null, selectedCard: {} }

@@ -5,6 +5,7 @@ import {
     givePlayerHand,
     ensureLobbySettings,
     updateLobbySettings,
+    cancelStartingPhase,
 } from '../services/gameService.js'
 import { transitionPhase } from '../services/phaseService.js'
 import { startCzarPhase, startRoundFlow, startNextTurn } from '../services/phaseFlowService.js'
@@ -111,8 +112,8 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
                 if (!hasEntry) return
                 socket.emit('board:player-card-selected', {
                     playerId,
-                    selectionLockDurationMs: info?.durationMs ?? 10000,
-                    selectionLockExpiresAt: info?.expiresAt ?? (Date.now() + 10000),
+                    selectionLockDurationMs: info?.durationMs ?? normalizedSettings.selectionLockTimeMs,
+                    selectionLockExpiresAt: info?.expiresAt ?? (Date.now() + normalizedSettings.selectionLockTimeMs),
                     sync: true,
                 })
             })
@@ -275,6 +276,7 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
         const res = transitionPhase({ games, io, lobbyId, to: phase })
         if (res.error) return cb?.(res)
 
+        const isStartingPhase = res.game.phase === 'starting'
         const timer = phaseTimerService.schedule({
             io,
             lobbyId,
@@ -282,6 +284,18 @@ export const registerRoomHandlers = ({ io, socket, games, socketRooms }) => {
             durationMs,
             defaultDurations: PHASE_DEFAULT_DURATIONS,
             onTimeout: () => {
+                // Ready countdown elapsed without everyone readying up. (When all
+                // players ready, handleStartIntroFlow clears this timer first, so
+                // reaching here means we still have stragglers.) Reset back to the
+                // lobby and clear ready flags so the round can be re-attempted.
+                if (isStartingPhase) {
+                    const cancelRes = cancelStartingPhase({ games, lobbyId })
+                    if (cancelRes && !('error' in cancelRes) && cancelRes.game) {
+                        io.to(lobbyId).emit('room:phase-changed', { phase: cancelRes.game.phase })
+                        emitPlayersUpdated({ io, lobbyId, game: cancelRes.game })
+                    }
+                    return
+                }
                 if (!nextPhase) return
                 transitionPhase({ games, io, lobbyId, to: nextPhase })
             },

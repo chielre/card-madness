@@ -7,16 +7,19 @@ export const LOBBY_SETTINGS_LIMITS = {
     roundCountMax: 8,
     czarRatingTimeMinMs: 10_000,
     czarRatingTimeMaxMs: 120_000,
+    selectionLockTimeMinMs: 2_000,
+    selectionLockTimeMaxMs: 20_000,
 } as const
 
 export const DEFAULT_LOBBY_SETTINGS = {
     keepLobbyOpen: true,
     roundTimeMs: 60_000,
     czarPickTimeMs: 60_000,
-    roundCount: 5,
+    roundCount: 2,
     cardSwapEnabled: true,
-    czarRatingEnabled: false,
+    czarRatingEnabled: true,
     czarRatingTimeMs: 30_000,
+    selectionLockTimeMs: 10_000,
 }
 
 type LobbySettingsInput = {
@@ -27,6 +30,7 @@ type LobbySettingsInput = {
     cardSwapEnabled?: boolean
     czarRatingEnabled?: boolean
     czarRatingTimeMs?: number
+    selectionLockTimeMs?: number
 } | null | undefined
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
@@ -69,5 +73,11 @@ export const normalizeLobbySettings = (settings?: LobbySettingsInput) => ({
         DEFAULT_LOBBY_SETTINGS.czarRatingTimeMs,
         LOBBY_SETTINGS_LIMITS.czarRatingTimeMinMs,
         LOBBY_SETTINGS_LIMITS.czarRatingTimeMaxMs
+    ),
+    selectionLockTimeMs: normalizeMs(
+        settings?.selectionLockTimeMs,
+        DEFAULT_LOBBY_SETTINGS.selectionLockTimeMs,
+        LOBBY_SETTINGS_LIMITS.selectionLockTimeMinMs,
+        LOBBY_SETTINGS_LIMITS.selectionLockTimeMaxMs
     ),
 })

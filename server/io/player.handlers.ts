@@ -56,14 +56,15 @@ export const registerPlayerHandlers = ({ io, socket, games }) => {
         cb?.({ ok: true })
     })
 
-    socket.on('player:card-selected', ({ lobbyId, card }, cb) => {
-        const res = selectPlayerCard({ games, lobbyId, playerId: socket.id, card })
+    socket.on('player:card-selected', ({ lobbyId, cards, card }, cb) => {
+        const res = selectPlayerCard({ games, lobbyId, playerId: socket.id, cards, card })
         if (res.error) return cb?.({ error: res.error })
 
+        const lockMs = res.game?.settings?.selectionLockTimeMs ?? 10000
         const lockInfo = scheduleSelectionLockTimer({
             lobbyId,
             playerId: res.playerSelectedCard.playerId,
-            delayMs: 10000,
+            delayMs: lockMs,
             onTimeout: () => {
                 lockSelectionAndCheck({ lobbyId, playerId: res.playerSelectedCard.playerId })
             },
@@ -71,8 +72,8 @@ export const registerPlayerHandlers = ({ io, socket, games }) => {
 
         io.to(lobbyId).emit('board:player-card-selected', {
             playerId: res.playerSelectedCard.playerId,
-            selectionLockDurationMs: lockInfo?.durationMs ?? 10000,
-            selectionLockExpiresAt: lockInfo?.expiresAt ?? (Date.now() + 10000),
+            selectionLockDurationMs: lockInfo?.durationMs ?? lockMs,
+            selectionLockExpiresAt: lockInfo?.expiresAt ?? (Date.now() + lockMs),
         })
 
         if (areAllNonSelectorPlayersSelected(res.game)) {
@@ -81,8 +82,8 @@ export const registerPlayerHandlers = ({ io, socket, games }) => {
         cb?.({ ok: true })
     })
 
-    socket.on('player:card-unselected', ({ lobbyId, card }, cb) => {
-        const res = unselectPlayerCard({ games, lobbyId, playerId: socket.id, card })
+    socket.on('player:card-unselected', ({ lobbyId }, cb) => {
+        const res = unselectPlayerCard({ games, lobbyId, playerId: socket.id })
         if (res.error) return cb?.({ error: res.error })
 
         io.to(lobbyId).emit('board:player-card-unselected', { playerId: res.playerSelectedCard.playerId })

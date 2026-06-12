@@ -37,6 +37,7 @@ export interface LobbySettings {
     cardSwapEnabled: boolean
     czarRatingEnabled: boolean
     czarRatingTimeMs: number
+    selectionLockTimeMs: number
 }
 
 export interface Room {
