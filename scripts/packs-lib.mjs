@@ -28,6 +28,11 @@ export function getPackFilterConfig() {
   return { includeNsfw, onlyCm, includeDeprecated }
 }
 
+export function shouldCleanPacksDir() {
+  const raw = process.env.COMMUNITY_PACKS_DOWNLOAD_CLEAN_DIR
+  return raw == null ? false : TRUTHY.has(String(raw).toLowerCase())
+}
+
 export function createSpinner(label) {
   const frames = ["|", "/", "-", "\\"]
   let index = 0
@@ -172,7 +177,7 @@ async function fetchSource() {
   return { rootDir }
 }
 
-export async function installOrUpdatePacks(packsDirEnv, { label, updateOnly = false } = {}) {
+export async function installOrUpdatePacks(packsDirEnv, { label, updateOnly = false, clean } = {}) {
   const packsDir = resolvePacksDir(packsDirEnv)
   const filter = getPackFilterConfig()
   const enabled = ["1", "true", "yes", "on"].includes(String(process.env.COMMUNITY_PACKS_ENABLED ?? "1").toLowerCase())
@@ -191,6 +196,11 @@ export async function installOrUpdatePacks(packsDirEnv, { label, updateOnly = fa
 
   try {
     const { rootDir } = await fetchSource()
+    const cleanDir = clean ?? shouldCleanPacksDir()
+    if (cleanDir) {
+      spinner.update("Cleaning packs directory")
+      await fs.rm(packsDir, { recursive: true, force: true })
+    }
     spinner.update(updateOnly ? "Updating packs" : "Installing packs")
     await copyLicense(rootDir, packsDir)
     const deprecatedCount = await copyPackDirs(rootDir, packsDir, filter)

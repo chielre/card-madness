@@ -33,7 +33,7 @@ jobs:
 
       - name: Build
         run: |
-          npm run install-packs
+          npm run install-packs -- --clean
           npm run build
         env:
           VITE_WS_SERVER_URL: ${{ secrets.SERVER_WS_URL }}
