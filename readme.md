@@ -21,48 +21,48 @@ A **mad** HTML5 multiplayer card game based on Card Against Humanity. Built in *
 ## Why?
 So far, I haven’t found a good, modern, and easy way to play Cards Against Humanity with friends online. Existing solutions require you to register, pay, or are limited in the features they offer. That’s why I decided to build another clone that does exactly what it promises, for free.
 
-## Planned features
+## Features
 
-- Create and join lobbies without registration ✅
-- [Community driven card packs](https://github.com/chielre/card-madness-packs) ✅
-- Lobby settings (rounds, white cards etc.) ✅
-- Personalised black & white cards based on player names ✅
-- Scoreboard and game results ✅
-- Audience selection ✅
-- Multi language gameplay ❌
-- First CZAR selection following the official rules (and more)❌
+- [x] Create and join lobbies for free, without registration
+- [x] [Community driven card packs](https://github.com/chielre/card-madness-packs)
+- [x] Customizable game settings
+- [x] Personalised experience based on player names
+- [x] Scoreboard and game results
+- [ ] Blank cards
+- [ ] Pack editor / creator
+- [x] Multi language gameplay
+- [ ] First CZAR selection following the official rules (and more)
+- [ ] Quick & Easy installation
+
 
 ## Getting Started
-This repository consists of a client and a websocket server. To build them you'll need NodeJS. Go to the [official Node.js website](https://nodejs.org/), download the installer and follow the steps to install NodeJS on your device. The console features are tested on a [Git BASH](https://git-scm.com/install/) terminal, other terminals may work but are at the moment untested. 
+This repository consists of a client and a server. To build them you'll need NodeJS. Go to the [official Node.js website](https://nodejs.org/), download the installer and follow the steps to install NodeJS on your device. 
 
 
 ### Client installation
-Install dependencies
-```BASH
-cd card-madness
-npm install
-```
+1. Install dependencies
+    ```BASH
+    npm install
+    ```
 
-After installing run:
-```BASH
-npm run build
-```
+2. Build the client:
+    ```BASH
+    npm run build
+    ```
 
-For development run:
-```BASH
-npm run dev
-```
+
 
 ### Server installation
-Install dependencies
-```BASH
-cd card-madness/server
-npm install
-```
-After installing run:
-```BASH
-npm run start
-```
+1. Install dependencies
+    ```BASH
+    cd card-madness/server
+    npm install
+    ```
+2. Start the server
+    ```BASH
+    npm run start
+    ```
+
 
 ## Install packs
 You are free to create, use and sell your own packs without restriction. Our official community packs are **strictly non-commercial** and therefore not bundled with this repository. In a non-commercial context, you may install [our community packs](https://github.com/chielre/card-madness-packs) via the following command: 
