@@ -40,9 +40,18 @@ export default defineConfig(({ mode }) => {
             outDir: "dist",
             rollupOptions: {
                 output: {
-                    manualChunks: {
-                        vue: ["vue"],
-                        vendor: ["gsap", "howler", "interactjs"],
+                    manualChunks(id) {
+                        if (id.includes("node_modules/vue")) {
+                            return "vue"
+                        }
+
+                        if (
+                            id.includes("node_modules/gsap") ||
+                            id.includes("node_modules/howler") ||
+                            id.includes("node_modules/interactjs")
+                        ) {
+                            return "vendor"
+                        }
                     },
                 },
             },
