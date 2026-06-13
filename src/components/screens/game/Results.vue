@@ -8,14 +8,12 @@ import ThumbDown from "vue-material-design-icons/ThumbDown.vue"
 
 import { resolveBlackCard, resolveWhiteCards } from "@/utils/cards"
 import { useLobbyStore } from "@/store/LobbyStore"
-import { useConnectionStore } from "@/store/ConnectionStore"
 import { useAudioStore } from "@/store/AudioStore"
 import BaseButton from "@/components/ui/BaseButton.vue"
 
 gsap.registerPlugin(CustomEase)
 
 const lobby = useLobbyStore()
-const connection = useConnectionStore()
 const audioStore = useAudioStore()
 
 const czarResultPlayerRef = ref<HTMLElement | null>(null)
@@ -41,7 +39,6 @@ const blackCardEmptyHtml = computed(() => {
 const selectedEntry = computed(() => lobby.currentRound?.cardSelector?.selectedCard ?? null)
 const selectedCzarPlayerId = computed(() => selectedEntry.value?.playerId ?? null)
 const selectedCzarPlayer = computed(() => lobby.players.find((p) => p.id === selectedCzarPlayerId.value) ?? null)
-// the resolved text of every white card in the winning set (one per :answer slot)
 const selectedCardsResolved = computed<string[]>(() => {
   const cards = selectedEntry.value?.cards ?? []
   if (!cards.length) return []
@@ -68,11 +65,9 @@ let czarResultStarting = false
 
 const showCzarResultButton = ref(false)
 
-/* ---------- czar rating (audience vote) ---------- */
 const ratingBarFillRef = ref<HTMLElement | null>(null)
 const ratingUiVisible = ref(false)
 
-// verdict meter shown above the black card once the rating resolves
 const ratingVerdictRef = ref<HTMLElement | null>(null)
 const ratingVerdictFillRef = ref<HTMLElement | null>(null)
 const ratingVerdictVisible = ref(false)
@@ -90,8 +85,6 @@ const ratingVerdictLabel = computed(() => {
   }
 })
 
-// scoreboard-sequence handoff state (set during the reveal, used when the
-// scoreboard is shown either immediately or after the rating resolves)
 let mergedCardsForScore: HTMLElement[] = []
 let scoreboardShiftXVal = 0
 let scoreboardOffsetVal = 240
@@ -190,7 +183,6 @@ function getRoundPointDelta(playerId: string) {
   if (winnerId && playerId === winnerId) delta += POINTS_CZAR_PICKED
   if (czarId && playerId === czarId) {
     delta += POINTS_CZAR_SELECT
-    // audience approved the czar's pick → bonus on top of the base point
     if (lobby.czarRating.resolved) delta += lobby.czarRating.bonus
   }
   return delta
@@ -202,9 +194,6 @@ function buildScoreboardEntries() {
   const fallbackSnapshot = new Map(lobby.players.map((player) => [player.id, Number(player.points) || 0]))
   const snapshot = roundPointsSnapshot.value.size ? roundPointsSnapshot.value : fallbackSnapshot
   const entries = lobby.players.map((player) => {
-    // points already deducted for this round's swaps are baked into the snapshot;
-    // start the count-up from the true round-start value and net the swap cost
-    // back out of the shown delta (e.g. won +5 but swapped once → +4).
     const lost = Number(player.pointsLostThisRound) || 0
     const award = getRoundPointDelta(player.id)
     const snapPoints = snapshot.get(player.id) ?? (Number(player.points) || 0)
@@ -435,8 +424,6 @@ function createWhiteCard() {
   const faces = selectedCardsResolved.value
   const n = Math.max(1, faces.length)
   whiteCardSetSize = n
-  // the set's white cards sit exactly on top of each other (no offset / no "deck"),
-  // and slide into the black card as one clean stack just like a single card does
   const cardHtml = (face: string) => `
     <div class="card-flip czar-whitecard-card">
       <div class="madness-card card-white card-responsive card-back card-flip-back" aria-hidden="true"></div>
@@ -459,7 +446,6 @@ function createWhiteCard() {
   })
   document.body.appendChild(el)
   el.querySelectorAll<HTMLElement>(".czar-whitecard-card").forEach((cf) => {
-    // every card in the set overlaps exactly
     cf.style.position = "absolute"
     cf.style.inset = "0"
     cf.style.transformStyle = "preserve-3d"
@@ -540,7 +526,6 @@ function clearBlackCardTyping() {
   }
 }
 
-// Types every :answer span on the black card in parallel from placeholder to its answer.
 function typeBlackCardAnswer(answerHtml: string, durationMs: number) {
   clearBlackCardTyping()
   const wrap = setBlackCardHtml(blackCardEmptyHtml.value)
@@ -690,7 +675,6 @@ async function startCzarResultAnimation() {
   const scoreboardShiftX = Math.round(Math.min(Math.max(rect.width * 0.35, 120), 200))
   const scoreboardOffset = Math.round(Math.min(Math.max(rect.width * 0.75, 200), window.innerWidth * 0.3))
 
-  // hand these to the scoreboard sequence, which may run now or after the rating
   mergedCardsForScore = mergedCards
   scoreboardShiftXVal = scoreboardShiftX
   scoreboardOffsetVal = scoreboardOffset
@@ -706,7 +690,6 @@ async function startCzarResultAnimation() {
 
   const driftX = Math.max(rect.width * 1.8)
 
-  // Cards inside screen
   tl.fromTo(
     mergedCards,
     { x: -driftX, rotateY: -65, rotate: introRotate, scale: 1.05, autoAlpha: 0 },
@@ -817,7 +800,6 @@ async function startCzarResultAnimation() {
       { y: 0, autoAlpha: 1, duration: 0.5, ease: "power2.out", delay: 0.2 },
       spinEnd + 0.65
     )
-    // gate: either run the audience rating first, or go straight to the scoreboard
     .call(() => onRevealComplete(), [], scoreboardStart)
 
   czarResultStarting = false
@@ -855,8 +837,6 @@ function playScoreboardSequence() {
   tl.call(() => {
     showCzarResultButton.value = true
   }, [], 0.1)
-  // once the cards have settled in their scoreboard position, reveal the
-  // verdict meter above the black card (no-op when there was no rating)
   tl.call(() => showRatingVerdict(), [], 0.5)
   tl.fromTo(
     czarNextRoundButton.value,
@@ -866,7 +846,6 @@ function playScoreboardSequence() {
   )
 }
 
-/* ---------- czar rating UI ---------- */
 function positionRatingVerdict() {
   const el = ratingVerdictRef.value
   const target = blackCardContainerEl
@@ -880,7 +859,6 @@ function positionRatingVerdict() {
   })
 }
 
-// Reveal the verdict meter above the black card when the scoreboard appears.
 function showRatingVerdict() {
   const total = lobby.czarRating.up + lobby.czarRating.down
   if (!lobby.czarRating.resolved || total <= 0) return
@@ -1036,8 +1014,7 @@ function startCzarResultOutroAnimation() {
 
 async function onNextRoundClick() {
   if (!canStartNextRound.value) return
-  const socket = await connection.ensureSocket()
-  socket.emit("round:next", { lobbyId: lobby.lobbyId })
+  await lobby.requestNextRound()
 }
 
 defineExpose({
@@ -1060,7 +1037,6 @@ watch(
   }
 )
 
-// each incoming vote drops a thumbs sticker onto the black card
 watch(
   () => lobby.czarRatingVotedTick,
   (tick) => {
@@ -1071,7 +1047,6 @@ watch(
   }
 )
 
-// when the rating resolves, hide the rating UI and reveal the scoreboard
 watch(
   () => lobby.czarRatingResolvedTick,
   (tick) => {
@@ -1183,7 +1158,6 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <!-- czar rating verdict meter (above the black card, shown with the scoreboard) -->
       <div v-show="ratingVerdictVisible" ref="ratingVerdictRef" class="czar-rating-verdict fixed z-[84] pointer-events-none opacity-0">
         <div class="flex items-center justify-between text-white font-black text-sm mb-1 px-1 drop-shadow">
           <span class="flex items-center gap-1"><ThumbUp :size="16" /> {{ ratingUp }}</span>
@@ -1195,7 +1169,6 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <!-- czar rating controls (with the progress bar below the thumbs) -->
       <div v-show="ratingUiVisible" class="fixed left-1/2 bottom-28 -translate-x-1/2 z-[85] flex flex-col items-center gap-3">
         <template v-if="!isCzar">
           <div class="text-white font-black text-lg drop-shadow">Was de CZAR juist?</div>

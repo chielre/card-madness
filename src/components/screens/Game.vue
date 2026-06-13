@@ -42,7 +42,6 @@ const introPhaseAnimation = async () => {
 
     introAnimationTl = gsap.timeline()
         .call(() => {
-            // prepare lobby to animate
             LobbyScreenRef.value?.closeReadyModal()
         })
         .to(LobbyScreenRef.value?.$el, { y: -120, autoAlpha: 0, display: "none", duration: 2, ease: 'power2.out' }, 0)

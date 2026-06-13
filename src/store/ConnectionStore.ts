@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { connectSocket, getSocket } from '@/ws/socket'
 
+let connecting: Promise<void> | null = null
+
 export const useConnectionStore = defineStore('connection', {
     state: () => ({
         isConnecting: false,
@@ -11,12 +13,13 @@ export const useConnectionStore = defineStore('connection', {
 
     actions: {
         async connect() {
-            if (this.isConnected || this.isConnecting) return
+            if (this.isConnected && getSocket()?.connected) return
+            if (connecting) return connecting
 
             this.isConnecting = true
             this.error = null
 
-            setTimeout(async () => {
+            connecting = (async () => {
                 try {
                     const socket = await connectSocket()
 
@@ -24,44 +27,34 @@ export const useConnectionStore = defineStore('connection', {
                     this.socketId = socket.id ?? null
                     this.error = null
 
-
-
-                    // luister op disconnects / reconnects
                     socket.on('disconnect', () => {
                         this.isConnected = false
                         this.socketId = null
-
-
                     })
 
                     socket.on('connect', () => {
-
                         this.isConnected = true
                         this.socketId = socket.id ?? null
                         this.error = null
                     })
 
                     socket.on('connect_error', (err: Error) => {
-
                         this.error = err.message
                         this.isConnected = false
                         this.socketId = null
-
-
                     })
                 } catch (e: unknown) {
                     this.error =
                         e instanceof Error ? e.message : 'Kon geen verbinding maken met de server'
                     this.isConnected = false
                     this.socketId = null
-
-
                 } finally {
                     this.isConnecting = false
+                    connecting = null
                 }
+            })()
 
-            }, 500)
-
+            return connecting
         },
 
         async ensureSocket() {
@@ -72,7 +65,6 @@ export const useConnectionStore = defineStore('connection', {
             const socket = getSocket()
             if (!socket) throw new Error('Socket niet beschikbaar')
 
-            // extra safety: socketId updaten
             this.socketId = socket.id ?? this.socketId
 
             return socket

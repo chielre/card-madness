@@ -110,8 +110,6 @@ async function kickPlayer(playerId: string) {
   await lobby.kickPlayer(lobby.lobbyId, playerId)
 }
 
-// Flash a transient "kaart gewisseld (-1)" card next to a player's name when
-// they swap a card, then collapse it again (mirrors the czar token behaviour).
 function flashSwapFlag(playerId: string | null) {
   if (!playerId || !listRef.value) return
   const el = listRef.value.querySelector(`[data-swap-card="${playerId}"]`) as HTMLElement | null

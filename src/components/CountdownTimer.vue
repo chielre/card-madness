@@ -160,7 +160,6 @@ function startEndingMark() {
     if (endingMarkPlayed.value) return
     endingMarkPlayed.value = true
 
-    // fire-and-forget
     audio.playCountDown('33')
 
     const el = bodyRef.value
@@ -169,7 +168,6 @@ function startEndingMark() {
     endingTl?.kill()
     endingTl = gsap.timeline()
 
-    // kleine “ticks”
     const shakes = [
         { t: 0.0, r: 10 },
         { t: 0.5, r: 20 },
@@ -179,7 +177,6 @@ function startEndingMark() {
     ]
     shakes.forEach(({ t, r }) => endingTl!.to(el, { rotate: r, duration: 0.24, ease: 'power2.out' }, t))
 
-    // pulse block
     endingTl!.fromTo(
         el,
         { scale: 1 },
@@ -187,7 +184,6 @@ function startEndingMark() {
         2
     )
 
-        // spins + bumps (compact)
         ;[
             { t: 7, rotate: 360, dur: 1 },
             { t: 12, rotate: 20, dur: 0.25 },
@@ -197,7 +193,6 @@ function startEndingMark() {
             { t: 19, rotate: 360, dur: 1 },
         ].forEach((s) => endingTl!.to(el, { rotate: s.rotate, duration: s.dur, ease: 'power2.out' }, s.t))
 
-        // 3x “pop”
         ;[24, 26, 28].forEach((t) => {
             endingTl!.fromTo(
                 el,
@@ -220,10 +215,8 @@ function startCzarMark() {
 watch(
     remainingSeconds,
     (sec) => {
-        // digit anim
         animateChangedDigits()
 
-        // last seconds mode
         if (props.mode === 'round') {
             const shouldLast = sec <= ROUND_LAST_SECONDS_AT
             if (shouldLast !== lastSecondsMode.value) {
@@ -231,7 +224,6 @@ watch(
                 shouldLast ? hideNonLastSeconds() : showAllDigits()
             }
 
-            // ending effects
             if (sec === ROUND_ENDING_AT) {
                 startPulseLines()
                 startEndingMark()
@@ -254,7 +246,6 @@ watch(
 )
 
 onMounted(() => {
-    // init visuals
     const lines = pulseLineRefs.value.filter(Boolean) as HTMLElement[]
     if (lines.length) gsap.set(lines, { autoAlpha: 0 })
 

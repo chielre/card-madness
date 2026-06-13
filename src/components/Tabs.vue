@@ -28,7 +28,6 @@ const setActive = (name: string) => {
 
 <template>
     <div class="col-span-2 space-y-8 max-h-full">
-        <!-- Header -->
         <div class="sticky top-0 z-10 bg-gray-200 rounded-xl p-1 gap-2 grid grid-cols-2">
             <button v-for="tab in tabs" :key="tab.name" class="px-6 py-2 border-2 border-b-4 font-black rounded-lg text-center " :class="active === tab.name
                 ? 'bg-white border-gray-500 text-gray-500 cursor-not-allowed'
@@ -38,7 +37,6 @@ const setActive = (name: string) => {
             </button>
         </div>
 
-        <!-- Content -->
         <slot />
     </div>
 </template>

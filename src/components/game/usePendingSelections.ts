@@ -14,12 +14,6 @@ type PendingConfig = {
   lockBoostPulseMs: number
 }
 
-// The selection-lock timer is per SET, not per card. For a multi-answer black card
-// the whole set shares one countdown: complete the set -> the timer runs; pull any
-// card out -> the set is incomplete and the timer is cleared. The visuals therefore
-// live on the set CONTAINER (the play-set for yourself, the card-set group for other
-// players) instead of on individual card elements, so cleanup is reliable even when
-// cards are dragged around.
 export function usePendingSelections({
   lobby,
   playRef,
@@ -55,7 +49,6 @@ export function usePendingSelections({
     )
   }
 
-  // The single container element that represents a player's whole set.
   function getPendingSetEls(playerId: string): HTMLElement[] {
     const currentId = getCurrentPlayerId()
     if (playerId === currentId) {
@@ -217,10 +210,6 @@ export function usePendingSelections({
   ) {
     if (!playerId) return
     if (isCardLocked(playerId)) return
-    // Always (re)sync to the given duration — the optimistic local start uses a
-    // best-guess window and the authoritative server value arrives a moment later
-    // and must override it. Bailing out while already "pending" would drop that
-    // correction and freeze the countdown at the optimistic guess.
     pendingCardTotals.set(playerId, totalMs)
     refreshPendingSelection(playerId, durationMs)
   }

@@ -2,12 +2,10 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue"
 import gsap from "gsap"
 import { useLobbyStore } from "@/store/LobbyStore"
-import { useConnectionStore } from "@/store/ConnectionStore"
 import { useAudioStore } from "@/store/AudioStore"
 import BaseButton from "@/components/ui/BaseButton.vue"
 
 const lobby = useLobbyStore()
-const connection = useConnectionStore()
 const audioStore = useAudioStore()
 
 const resultsWrapRef = ref<HTMLElement | null>(null)
@@ -111,8 +109,7 @@ function startResultsAnimation() {
 
 async function onReturnToLobby() {
   if (!canReturnToLobby.value) return
-  const socket = await connection.ensureSocket()
-  socket.emit("room:phase-set", { lobbyId: lobby.lobbyId, phase: "lobby" })
+  await lobby.returnToLobby()
 }
 
 watch(

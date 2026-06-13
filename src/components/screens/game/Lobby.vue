@@ -5,9 +5,7 @@ import { useRouter } from 'vue-router'
 
 import { useLobbyStore } from '@/store/LobbyStore'
 import { useAudioStore } from '@/store/AudioStore'
-import { useConnectionStore } from '@/store/ConnectionStore'
 import { useUiStore } from '@/store/UiStore'
-import { normalizeLobbySettings } from '@/types/lobbySettings'
 import type { LobbySettings } from '@/types/lobbySettings'
 
 
@@ -30,13 +28,12 @@ import PackInfoModal from '@/components/modals/PackInfoModal.vue'
 const lobby = useLobbyStore()
 const audio = useAudioStore()
 const ui = useUiStore()
-const connection = useConnectionStore()
 const router = useRouter()
 
 const readyModalRef = ref<InstanceType<typeof ReadyListModal> | null>(null)
 const packInfoModalRef = ref<InstanceType<typeof PackInfoModal> | null>(null)
 const currentMusicPackId = ref<string | null>(null)
-const lobbySettings = ref<LobbySettings>(normalizeLobbySettings(lobby.settings))
+const lobbySettings = computed(() => lobby.settings)
 
 const selectedPackIds = computed(() => lobby.selectedPacks)
 const resolvedPacks = computed(() => resolvePacks())
@@ -114,24 +111,15 @@ const copyLobbyLink = async () => {
 }
 
 const startGame = async () => {
-    if (!lobby.getCurrentPlayerIsHost() && lobby.lobbyId != 'TEST01') return
-    await connection.emitWithAck('room:phase-set', { lobbyId: lobby.lobbyId, phase: 'starting' })
+    if (!lobby.getCurrentPlayerIsHost()) return
+    await lobby.startGame()
 }
 
 const applyLobbySettings = async (partial: Partial<LobbySettings>) => {
-    const next = normalizeLobbySettings({
-        ...lobbySettings.value,
-        ...partial,
-    })
-
-    lobbySettings.value = next
-    lobby.setLobbySettings(next)
+    lobby.setLobbySettings(partial)
 
     if (!canEditSettings.value || !lobby.lobbyId) return
-    const res = await lobby.updateLobbySettings(lobby.lobbyId, partial)
-    if (!res?.error && res?.settings) {
-        lobbySettings.value = normalizeLobbySettings(res.settings)
-    }
+    await lobby.updateLobbySettings(lobby.lobbyId, partial)
 }
 
 const keepLobbyOpenToggle = computed<'on' | 'off'>({
@@ -234,8 +222,7 @@ const resetLobbyUi = (opts?: { keepReadyModal?: boolean }) => {
     currentMusicPackId.value = null
 }
 
-const canKickPlayer = (playerId: string) =>
-    lobby.getCurrentPlayerIsHost() && playerId !== connection.getSocketSafe()?.id
+const canKickPlayer = (playerId: string) => lobby.canCurrentPlayerKickPlayer(playerId)
 
 const kickPlayer = async (playerId: string) => {
     if (!canKickPlayer(playerId)) return
@@ -243,14 +230,6 @@ const kickPlayer = async (playerId: string) => {
 }
 
 watch(selectedPackIds, () => syncPackSelection(), { immediate: true })
-
-watch(
-    () => lobby.settings,
-    (settings) => {
-        lobbySettings.value = normalizeLobbySettings(settings)
-    },
-    { deep: true, immediate: true }
-)
 
 watch(
     () => lobby.phase,
@@ -335,7 +314,6 @@ defineExpose({ openReadyModal, closeReadyModal })
         </div>
         <div class="flex gap-6 mt-8">
 
-            <!-- player list-->
             <div class="w-100 bg-white border-4 border-b-8 rounded-xl border-black p-4 flex justify-between flex-col">
                 <ul class="space-y-2">
                     <li v-for="player in lobby.players" :key="player.id" class="group flex justify-between items-center gap-4 text-black text-2xl font-bold p-4 rounded-xl even:bg-gray-100">
@@ -352,7 +330,7 @@ defineExpose({ openReadyModal, closeReadyModal })
                             <div v-if="player.id === lobby.host" class="text-sm font-black px-2 py-1 rounded-full bg-yellow-300 text-black border-4 border-b-8 border-black">
                                 {{ $t('host') }}
                             </div>
-                            <div v-else-if="player.id === connection.getSocketSafe()?.id" class="text-sm font-black px-2 py-1 rounded-full bg-gray-200 text-black  border-4 border-b-8 border-black">
+                            <div v-else-if="player.id === lobby.getCurrentSocketId()" class="text-sm font-black px-2 py-1 rounded-full bg-gray-200 text-black  border-4 border-b-8 border-black">
                                 {{ $t("you") }}
                             </div>
 
@@ -367,7 +345,6 @@ defineExpose({ openReadyModal, closeReadyModal })
                 </div>
             </div>
 
-            <!-- card decks -->
             <div class="w-full max-w-5xl bg-black/50 backdrop-blur-sm rounded-xl border-black p-4 transition-all">
                 <div class="flex gap-2 justify-between">
                     <div class="flex-1 flex gap-3 mb-4 bg-black/50 p-4 rounded-xl text-white">
@@ -395,7 +372,6 @@ defineExpose({ openReadyModal, closeReadyModal })
             </div>
 
 
-            <!-- lobby settings -->
             <div class="flex flex-col gap-4 w-88 max-w-full">
 
                 <div class="relative">
@@ -498,7 +474,6 @@ defineExpose({ openReadyModal, closeReadyModal })
                         </Tabs>
                     </div>
 
-                    <!-- scroll indicator -->
                     <div
                         v-show="settingsCanScroll && !settingsAtBottom"
                         class="pointer-events-none absolute inset-x-1 bottom-1 flex h-16 items-end justify-center rounded-b-xl bg-linear-to-t from-white via-white/90 to-transparent pb-2"

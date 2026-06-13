@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue"
-import { useConnectionStore } from "@/store/ConnectionStore"
 import { useLobbyStore } from "@/store/LobbyStore"
 import BaseButton from "@/components/ui/BaseButton.vue"
 
 const lobby = useLobbyStore()
-const connection = useConnectionStore()
 
 const stage = computed(() => (import.meta as any).env?.STAGE)
 const showDebugPhaseButtons = computed(() => {
@@ -16,8 +14,6 @@ const showDevTools = computed(() => stage.value === "development")
 
 async function onDebugNextPhase() {
   if (!showDebugPhaseButtons.value) return
-  const socket = await connection.ensureSocket()
-  const phase = lobby.phase
   const nextMap: Record<string, string> = {
     lobby: "starting",
     starting: "intro",
@@ -27,21 +23,19 @@ async function onDebugNextPhase() {
     "czar-result": "board",
     results: "lobby",
   }
-  const nextPhase = nextMap[phase]
+  const nextPhase = nextMap[lobby.phase]
   if (!nextPhase) return
-  socket.emit("room:phase-set", { lobbyId: lobby.lobbyId, phase: nextPhase })
+  await lobby.setServerPhase(nextPhase)
 }
 
 async function onDebugNextRound() {
   if (!showDebugPhaseButtons.value) return
-  const socket = await connection.ensureSocket()
-  socket.emit("round:next", { lobbyId: lobby.lobbyId })
+  await lobby.requestNextRound()
 }
 
 async function onSpawnBot() {
   if (!showDevTools.value || !lobby.lobbyId) return
-  const socket = await connection.ensureSocket()
-  socket.emit("dev:spawn-bot", { lobbyId: lobby.lobbyId })
+  await lobby.spawnBot()
 }
 </script>
 

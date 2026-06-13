@@ -30,7 +30,6 @@ const step = computed(() => 360 / totalTicks.value)
 type Tick = { x1: number; y1: number; x2: number; y2: number; state: "done" | "current" | "todo" }
 
 const tickAt = (angleDeg: number, inner: number) => {
-    // 0deg = top (12 o'clock), increasing clockwise
     const rad = ((angleDeg - 90) * Math.PI) / 180
     return {
         outer: { x: CENTER + TICK_OUTER * Math.cos(rad), y: CENTER + TICK_OUTER * Math.sin(rad) },
@@ -49,7 +48,6 @@ const ticks = computed<Tick[]>(() =>
     })
 )
 
-// Rotate the dial so the current round's tick lands under the top pointer.
 const rotation = computed(() => -(current.value - 1) * step.value)
 
 const dialStyle = computed(() => ({
@@ -63,12 +61,9 @@ const dialStyle = computed(() => ({
 <template>
   <div class="block">
     <svg :viewBox="`0 0 ${SIZE} ${SIZE}`" class="block w-full h-full" role="img" :aria-label="`Ronde ${current} van ${totalTicks}`">
-        <!-- chunky bottom lip -->
         <circle :cx="CENTER" :cy="CENTER + 3" r="46" fill="#000" />
-        <!-- clock face -->
         <circle :cx="CENTER" :cy="CENTER" r="46" fill="#fff" stroke="#000" stroke-width="3" />
 
-        <!-- rotating dial -->
         <g :style="dialStyle">
             <line
                 v-for="(tick, i) in ticks"
@@ -83,7 +78,6 @@ const dialStyle = computed(() => ({
             />
         </g>
 
-        <!-- current round number -->
         <text
             :x="CENTER"
             :y="CENTER"
@@ -96,7 +90,6 @@ const dialStyle = computed(() => ({
             {{ current }}
         </text>
 
-        <!-- fixed pointer (wheel of fortune style) -->
         <polygon points="43,1 57,1 50,15" fill="#ec4899" stroke="#000" stroke-width="2" stroke-linejoin="round" />
     </svg>
   </div>

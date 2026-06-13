@@ -1,4 +1,3 @@
-// cards.ts
 import { getPackById } from "@/utils/packs"
 import { getActiveLanguage } from "@/utils/activeLanguage"
 
@@ -105,8 +104,6 @@ function hydrate(text: string, name?: string, names?: string[], answerHtml?: str
     let nameIndex = 0
     let answerIndex = 0
     const hasNames = Array.isArray(names) && names.length > 0
-    // Each :answer slot consumes the next entry of the answer array (mirrors :name).
-    // A bare string fills every slot with the same value (legacy single-answer callers).
     const answers = Array.isArray(answerHtml) ? answerHtml : null
     return text
         .replace(/:name/g, () => {

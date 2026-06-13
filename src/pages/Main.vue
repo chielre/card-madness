@@ -32,7 +32,6 @@ const openLicense = () => {
         <div class="bg-noise"></div>
         <div class="bg-grid"></div>
         <div>
-            <!-- Topbar -->
             <img class="logo" width="300" src="../assets/images/logo.png" alt="">
             <div class="mt-16 flex flex-col gap-4">
                 <BaseButton @click="CreateLobby" size="lg">{{ $t('create_lobby') }}</BaseButton>

@@ -84,7 +84,6 @@ onMounted(() => {
         }, { immediate: true })
     }
     connection.connect()
-    // audio init happens on Play click
 })
 </script>
 

@@ -219,7 +219,6 @@ const runIntroAnimation = async () => {
     resetIntroAnimation()
 
     const packEls = getIntroPackElements()
-    // if (!lobbyRootRef.value || !introOverlayRef.value || packEls.length === 0) return
     const flyOutX = packEls.map((el) => {
         const rect = el.getBoundingClientRect()
         const centerX = rect.left + rect.width / 2

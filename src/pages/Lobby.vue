@@ -42,9 +42,6 @@ const shouldSkipName = computed(() => {
     return stage === 'development' && String(skipName) === '1'
 })
 
-const normalizePlayers = (playerList: { id: string; name: string; ready?: boolean; points?: number }[]) =>
-    playerList.map((p) => ({ ...p, ready: !!p.ready, points: Number(p.points) || 0 }))
-
 const roomNotFound = () => {
     return router.replace({
         name: 'main',
@@ -89,28 +86,23 @@ const joinWithName = async () => {
     }
 }
 
-/*-----------------------------------
-Game room events
-*/
 const handlePacksUpdated = (payload: { packs: string[] }) => {
-    lobby.selectedPacks = payload.packs
+    lobby.setPacks(payload.packs)
 }
 const handlePlayersUpdated = (payload: { id: string; players: { id: string; name: string; ready?: boolean }[] }) => {
     if (payload.players) {
-        const nextPlayers = normalizePlayers(payload.players)
         if (!readyMapInitialized) {
-            updateReadyMap(nextPlayers)
+            updateReadyMap(payload.players)
         } else {
-            nextPlayers.forEach((player) => {
+            payload.players.forEach((player) => {
                 const wasReady = readyMap.get(player.id) ?? false
-                const isReady = !!player.ready
-                if (!wasReady && isReady) {
+                if (!wasReady && !!player.ready) {
                     audio.playReadySwoosh()
                 }
             })
-            updateReadyMap(nextPlayers)
+            updateReadyMap(payload.players)
         }
-        lobby.players = nextPlayers
+        lobby.setPlayers(payload.players)
     }
 }
 
@@ -132,9 +124,6 @@ const handleRoomSettingsUpdated = (payload: { settings?: any }) => {
     lobby.setLobbySettings(payload?.settings)
 }
 
-/*-----------------------------------
-Game player events
-*/
 const handlePlayerReady = (payload: { id: string; ready: boolean }) => {
     lobby.updatePlayer(payload.id, { ready: payload.ready })
 
@@ -146,18 +135,13 @@ const handlePlayerJoined = (payload: { id: string; name: string; ready?: boolean
 }
 const handlePlayerLeft = (payload: { id: string; players?: { id: string; name: string; ready?: boolean }[] }) => {
     if (payload.players) {
-        lobby.players = normalizePlayers(payload.players)
+        lobby.setPlayers(payload.players)
     } else {
         lobby.removePlayer(payload.id)
-
     }
 }
 
 
-
-/*-----------------------------------
-Game socket events
-*/
 
 const handleGamePhaseChange = (payload: { phase: string }) => {
     if (payload.phase) {
@@ -201,10 +185,6 @@ const schedulePhaseSync = async (nextPhase: string) => {
     }
 }
 
-
-/*-----------------------------------
-Board socket events
-*/
 
 const handleBoardRoundUpdated = (payload: { currentRound: any; roundNumber?: number | null; gameRound?: number | null }) => {
     lobby.setCurrentRound(payload.currentRound)
@@ -263,9 +243,6 @@ const handleCzarRatingResult = (payload: { result: 'win' | 'lose' | 'tie'; up?: 
 }
 
 
-/*-----------------------------------
-Player socket updates
-*/
 const handlePlayerCardsUpdated = (payload: { cards: any }) => {
     lobby.setCurrentPlayerCards(payload.cards)
 }
@@ -310,7 +287,6 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-    // laat de server weten dat we de lobby verlaten als we weg navigeren
     lobby.leaveLobby(lobbyId)
 
     if (!socket) return
@@ -361,8 +337,6 @@ watch(
         const card = lobby.pendingUnselectedCard
         if (!card) return
         socket.emit('player:card-unselected', { lobbyId, card }, (res: { error?: string } | undefined) => {
-            // The server is authoritative: if it refuses the take-back (already
-            // locked / round advanced) restore the card we removed optimistically.
             if (res?.error) lobby.recordUnselectRejected()
         })
         lobby.clearPendingUnselectedCard()

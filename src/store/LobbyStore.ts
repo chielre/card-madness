@@ -35,7 +35,6 @@ type RoundState = {
     playerSelectedCards: { playerId: string; cards?: WhiteCard[] | null; locked?: boolean }[]
 }
 
-// Mirror of POINTS_CARD_SWAP_COST on the server: a card swap costs this many points.
 export const CARD_SWAP_COST = 1
 
 export type CzarRatingVote = 'up' | 'down'
@@ -112,6 +111,8 @@ const resetPlayerForLobby = (player: Player): Player => ({
     eligibleFromRound: 1,
 })
 
+const lockBoostLastAt = new Map<string, number>()
+
 export const useLobbyStore = defineStore('lobby', {
     state: () => ({
         lobbyId: '',
@@ -158,8 +159,6 @@ export const useLobbyStore = defineStore('lobby', {
         config: {
             lockBoostCooldownMs: 120,
         },
-        lockBoostLastAt: new Map<string, number>()
-
     }),
 
     actions: {
@@ -176,7 +175,7 @@ export const useLobbyStore = defineStore('lobby', {
         getCurrentPlayerId(): string | null {
             return this.getCurrentSocketId()
         },
-        getCurrentPlayerOrFail(): Player | Error {
+        getCurrentPlayerOrFail(): Player {
             const player = this.getCurrentPlayer()
             if (!player) throw new Error('Current player is not set')
 
@@ -314,7 +313,7 @@ export const useLobbyStore = defineStore('lobby', {
             this.phaseTimerDurationMs = 0
             this.phaseTimerExpiresAt = 0
             this.phaseTimeoutTick = 0
-            this.lockBoostLastAt.clear()
+            lockBoostLastAt.clear()
         },
         async createLobby(hostName: string, language?: string, settings?: LobbySettingsInput) {
             const conn = useConnectionStore()
@@ -599,9 +598,6 @@ export const useLobbyStore = defineStore('lobby', {
             this.pendingUnselectedCard = null
         },
 
-        // The server refused a take-back (the set is already locked, or the round
-        // has advanced). The card was removed locally optimistically, so signal the
-        // board to restore it from the still-authoritative currentRound state.
         recordUnselectRejected() {
             this.unselectRejectedTick += 1
         },
@@ -717,7 +713,6 @@ export const useLobbyStore = defineStore('lobby', {
         async submitCzarRatingVote(vote: CzarRatingVote) {
             if (!this.canCurrentPlayerRate()) return
             if (this.hasCurrentPlayerRated()) return
-            // optimistic local lock so the buttons disable immediately
             this.czarRating.myVote = vote
 
             const conn = useConnectionStore()
@@ -731,9 +726,9 @@ export const useLobbyStore = defineStore('lobby', {
             if (this.getCurrentPlayerIsCzar()) return
 
             const now = Date.now()
-            const lastBoost = this.lockBoostLastAt.get(playerId) ?? 0
+            const lastBoost = lockBoostLastAt.get(playerId) ?? 0
             if (now - lastBoost < (this.config?.lockBoostCooldownMs ?? 0)) return
-            this.lockBoostLastAt.set(playerId, now)
+            lockBoostLastAt.set(playerId, now)
 
             const conn = useConnectionStore()
             const socket = conn.getSocketSafe()
@@ -756,6 +751,64 @@ export const useLobbyStore = defineStore('lobby', {
         goToGame(lobbyId: string) {
             const code = String(lobbyId ?? '')
             return router.push({ name: 'game', params: { id: code } })
+        },
+
+        setPlayers(players: Array<Partial<Player> & { id: string; name: string }>) {
+            this.players = (players ?? []).map((p) => normalizePlayer(p as Player))
+        },
+
+        setPacks(packs: string[]) {
+            this.selectedPacks = packs ?? []
+        },
+
+        seedDevLobby(hostId: string) {
+            this.lobbyId = 'DEV01'
+            this.host = hostId
+            this.phase = 'lobby'
+            this.players = [
+                { id: hostId, name: 'Dev Host', ready: true, white_cards: [] },
+                { id: 'dev-1', name: 'Player One', ready: false, white_cards: [] },
+                { id: 'dev-2', name: 'Player Two', ready: true, white_cards: [] },
+                { id: 'dev-3', name: 'Player Three', ready: false, white_cards: [] },
+            ].map(normalizePlayer)
+            this.selectedPacks = []
+        },
+
+        async startGame() {
+            const conn = useConnectionStore()
+            return conn.emitWithAck('room:phase-set', { lobbyId: this.lobbyId, phase: 'starting' })
+        },
+
+        async returnToLobby() {
+            const conn = useConnectionStore()
+            const socket = await conn.ensureSocket()
+            socket.emit('room:phase-set', { lobbyId: this.lobbyId, phase: 'lobby' })
+        },
+
+        async requestNextRound() {
+            const conn = useConnectionStore()
+            const socket = await conn.ensureSocket()
+            socket.emit('round:next', { lobbyId: this.lobbyId })
+        },
+
+        async setServerPhase(phase: string) {
+            const conn = useConnectionStore()
+            const socket = await conn.ensureSocket()
+            socket.emit('room:phase-set', { lobbyId: this.lobbyId, phase })
+        },
+
+        async spawnBot() {
+            if (!this.lobbyId) return
+            const conn = useConnectionStore()
+            const socket = await conn.ensureSocket()
+            socket.emit('dev:spawn-bot', { lobbyId: this.lobbyId })
+        },
+
+        sendCzarCursor(pos: { x: number; y: number }, visible = true) {
+            const conn = useConnectionStore()
+            const socket = conn.getSocketSafe()
+            if (!socket) return
+            socket.emit('czar:cursor-update', { lobbyId: this.lobbyId, x: pos.x, y: pos.y, visible })
         },
 
     },

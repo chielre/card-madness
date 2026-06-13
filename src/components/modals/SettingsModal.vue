@@ -98,7 +98,6 @@ const close = () => ui.closeSettings()
     </div>
 
     <div class="mt-6 space-y-6">
-      <!-- Language -->
       <div>
         <div class="w-1/2">
           <div class="text-lg font-black">{{ $t('settings_language') }}</div>
@@ -112,7 +111,6 @@ const close = () => ui.closeSettings()
         </div>
       </div>
 
-      <!-- Muziek -->
       <div>
         <div class="w-1/2">
           <div class="text-lg font-black">{{ $t('settings_music') }}</div>
@@ -126,7 +124,6 @@ const close = () => ui.closeSettings()
         </div>
       </div>
 
-      <!-- SFX -->
       <div class="mt-9">
         <div class="w-1/2">
           <div class="text-lg font-black">{{ $t('settings_effects') }}</div>

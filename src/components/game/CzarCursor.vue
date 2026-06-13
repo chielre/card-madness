@@ -3,7 +3,6 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import type { PropType } from "vue"
 import gsap from "gsap"
 
-import { useConnectionStore } from "@/store/ConnectionStore"
 import { useLobbyStore } from "@/store/LobbyStore"
 
 const props = defineProps({
@@ -18,7 +17,6 @@ const emit = defineEmits<{
 }>()
 
 const lobby = useLobbyStore()
-const connection = useConnectionStore()
 
 const cursorRef = ref<HTMLElement | null>(null)
 const cursorVisible = ref(false)
@@ -156,7 +154,6 @@ function updateCzarHoverAt(x: number, y: number) {
   const playerId = nextCard?.getAttribute("data-selected-player-id") ?? null
   if (nextCard) {
     czarHoverCard = nextCard
-    // light up the whole set (every card sharing this player's id), not just one card
     const setCards = playerId && props.boardGridRef
       ? Array.from(props.boardGridRef.querySelectorAll<HTMLElement>(`.card-flip[data-selected-player-id="${playerId}"]`))
       : [nextCard]
@@ -253,9 +250,7 @@ function setNativeCursorHidden(hidden: boolean) {
 }
 
 function emitCzarCursorUpdate(pos: { x: number; y: number }, visible = true) {
-  const socket = connection.getSocketSafe()
-  if (!socket) return
-  socket.emit("czar:cursor-update", { lobbyId: lobby.lobbyId, x: pos.x, y: pos.y, visible })
+  lobby.sendCzarCursor(pos, visible)
 }
 
 function onCzarPointerMove(e: PointerEvent) {

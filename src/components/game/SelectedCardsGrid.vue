@@ -47,11 +47,9 @@ function onCzarCardSelect(entry: SelectedCardEntry) {
   lobby.queueCzarSelectedEntry({ playerId: entry.playerId, cards: entry.cards ?? null })
 }
 
-// number of cards in a player's set (>=1)
 function entrySetSize(entry: SelectedCardEntry): number {
   return entry.cards?.length || entry.resolved?.length || 1
 }
-// one entry per card in the set: resolved answer html during reveal, empty (face-down) otherwise
 function entryFaceList(entry: SelectedCardEntry): string[] {
   const size = entrySetSize(entry)
   const faces = isRevealPhase.value ? (entry.resolved ?? []).map((r) => r?.text ?? "") : []
@@ -379,7 +377,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="gridRef" class="contents">
-    <!-- one group per player; a set's cards sit side by side and flip individually -->
     <div
       v-for="entry in selectedEntries"
       :key="entry.playerId"

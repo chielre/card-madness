@@ -13,7 +13,6 @@ import { useLobbyStore } from "@/store/LobbyStore"
 
 gsap.registerPlugin(CustomEase)
 
-// 1x eases registreren
 CustomEase.create("readyBounce", "0.16,1.45,0.34,1")
 CustomEase.create("cardBounce", "0.18,1.4,0.35,1")
 
@@ -35,7 +34,7 @@ function killTl() {
 
 onBeforeUnmount(() => killTl())
 
-const currentPlayer = computed(() => lobby.getCurrentPlayerOrFail?.() ?? null)
+const currentPlayer = computed(() => lobby.getCurrentPlayer())
 
 async function setPlayerReady() {
     if (!lobby.lobbyId) return
@@ -140,7 +139,6 @@ async function open() {
         return
     }
 
-    // audio (optioneel async)
     await audio.readyCountDown?.("52")
     audio.playCountDown?.("52")
 
@@ -149,14 +147,10 @@ async function open() {
 
     tl = gsap
         .timeline()
-        // overlay in
         .fromTo(readyModalWrapper.value, { opacity: 0 }, { opacity: 1, duration: 0.1, ease: "power1.out" }, 0)
-        // text intro
         .fromTo(readyTextRef.value, { opacity: 0, scale: 0 }, { opacity: 1, scale: 1, duration: 1.5, ease: "readyBounce" }, 0)
         .to(readyTextRef.value, { opacity: 0, scale: 0, duration: 1, ease: "readyBounce" }, 1.7)
-        // modal in
         .fromTo(readyModal.value, { opacity: 0, scale: 0 }, { opacity: 1, scale: 1, duration: 1.5, ease: "readyBounce" }, 2)
-        // cards in
         .fromTo(
             cards,
             { opacity: 0, scale: 0.6, y: 40, rotate: () => gsap.utils.random(-12, 12) },
@@ -172,7 +166,6 @@ async function open() {
             4
         )
 
-    // pulses (DRY)
     pulse(cards, { startAt: 6, repeats: 19, every: 1, duration: 0.18 })
     pulse(cards, { startAt: 26, repeats: 2, every: 2, duration: 0.5 })
     pulse(cards, { startAt: 36, repeats: 14, every: 1, duration: 0.18, pickTwo: true })
@@ -186,7 +179,6 @@ async function open() {
 }
 
 function close() {
-    // snelle close: stop animatie en verberg
     const cards = getCards()
     playOutro(cards)
 }
@@ -226,7 +218,6 @@ defineExpose({ open, close, reset })
                 </div>
             </div>
 
-            <!-- Decor cards (scoped onder wrapper, class .card-anim is belangrijk) -->
             <div class="absolute left-0 -top-30 z-0 -rotate-12">
                 <div class="absolute left-0 top-0">
                     <div class="madness-card card-black card-anim opacity-0">Can ________ hurry up? It takes so long!</div>
